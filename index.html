@@ -32,10 +32,10 @@
   .logo h1 { animation:logoIn .6s cubic-bezier(.3,1.6,.5,1) both; }
   @keyframes logoIn { from { transform:scale(.4); opacity:0; } to { transform:scale(1); opacity:1; } }
   .logosvg { content:var(--logoMask); display:block; width:var(--logoW); height:auto; overflow:visible; animation:logoIn .6s cubic-bezier(.3,1.6,.5,1) both; }
-  .snd { position:absolute; right:10px; top:calc(var(--band) + 8px); z-index:5; width:46px; height:46px; min-height:0; padding:0;
-    border-radius:50%; font-size:22px; line-height:1; display:grid; place-items:center; background:#fff; }
+  .snd { position:absolute; right:10px; top:calc(var(--band) + 8px); z-index:5; width:58px; height:58px; min-height:0; padding:0;
+    border-radius:50%; font-size:28px; line-height:1; display:grid; place-items:center; background:#fff; }
   .tap { display:none; position:absolute; left:0; right:0; bottom:13%; text-align:center; pointer-events:none;
-    font-family:"SilesLogo","SilesUI",sans-serif; text-transform:uppercase; font-size:26px; color:#fff;
+    font-family:"SilesLogo","SilesUI",sans-serif; text-transform:uppercase; font-size:clamp(28px,8.5vw,40px); color:#fff;
     -webkit-text-stroke:6px var(--ink); paint-order:stroke fill; animation:tapPulse .9s ease-in-out infinite alternate; }
   @keyframes tapPulse { from { transform:scale(1); opacity:.75; } to { transform:scale(1.08); opacity:1; } }
   body.locked .tap { display:block; }
@@ -73,18 +73,18 @@
   body:not(.locked) #btnNew { animation:rise .45s cubic-bezier(.3,1.4,.5,1) both, pulse 1.1s ease-in-out .6s infinite alternate; }
   @keyframes pulse { from { scale:1; } to { scale:1.045; } }
   @media (prefers-reduced-motion:reduce) { .fx, .logo::after { display:none; } .logo, #btnNew, .cover { animation:none !important; } }
-  .bottom { width:min(360px,100%); display:flex; flex-direction:column; align-items:center; gap:10px; }
+  .bottom { width:min(460px,100%); display:flex; flex-direction:column; align-items:center; gap:10px; }
   nav { width:100%; display:grid; grid-template-columns:1fr 1fr; gap:11px 12px; }
-  button { font-family:"SilesLogo","SilesUI",sans-serif; text-transform:uppercase; font-size:19px; letter-spacing:.3px; color:var(--ink); min-height:52px; padding:0 6px;
+  button { font-family:"SilesLogo","SilesUI",sans-serif; text-transform:uppercase; font-size:clamp(20px,6vw,28px); letter-spacing:.3px; color:var(--ink); min-height:clamp(58px,17vw,78px); padding:0 6px;
     border:4px solid var(--ink); border-radius:14px; cursor:pointer; background:#fff;
     box-shadow:4px 4px 0 var(--ink); transition:translate .07s, box-shadow .07s; }
-  #btnNew { grid-column:1 / 3; background:linear-gradient(#5fe6ff,#12a4f2); color:#fff; text-shadow:0 2px 0 #0a1a4a, 0 0 6px rgba(10,26,74,.5); font-size:24px; min-height:60px; transform:rotate(-1deg); }
+  #btnNew { grid-column:1 / 3; background:linear-gradient(#5fe6ff,#12a4f2); color:#fff; text-shadow:0 2px 0 #0a1a4a, 0 0 6px rgba(10,26,74,.5); font-size:clamp(26px,8.2vw,38px); min-height:clamp(70px,21vw,96px); transform:rotate(-1deg); }
   button:active:not(:disabled) { translate:3px 3px; box-shadow:1px 1px 0 var(--ink); }
   button:disabled { background:#c9c9d6; color:#77778a; cursor:not-allowed; }
-  .version { font-family:system-ui,sans-serif; font-size:12px; color:#fff; opacity:.9; text-shadow:0 1px 2px rgba(0,0,0,.6); }
+  .version { font-family:system-ui,sans-serif; font-size:14px; color:#fff; opacity:.9; text-shadow:0 1px 2px rgba(0,0,0,.6); }
   .toast { position:absolute; left:50%; top:40%; translate:-50% 0; scale:0; z-index:9; background:#fff;
     border:4px solid var(--ink); border-radius:18px; box-shadow:5px 5px 0 var(--ink);
-    padding:12px 18px; font-size:18px; max-width:86vw; text-align:center; transition:scale .15s; pointer-events:none; }
+    padding:16px 22px; font-size:clamp(20px,6vw,28px); max-width:86vw; text-align:center; transition:scale .15s; pointer-events:none; }
   .toast.show { scale:1; }
   .blur { display:none; }
   /* Querformat: Cover links, Titel und Knöpfe rechts */
@@ -99,8 +99,10 @@
     .tap { left:calc(100vh * 9 / 16); bottom:18%; }
     .stage { left:calc(100vh * 9 / 16); justify-content:center; gap:18px; padding:8px 18px; }
     .logosvg { width:min(46vw,380px); }
-    button { min-height:46px; font-size:18px; }
-    #btnNew { min-height:52px; font-size:22px; }
+    button { min-height:50px; font-size:20px; }
+    #btnNew { min-height:58px; font-size:25px; }
+    .snd { width:48px; height:48px; font-size:23px; }
+    .tap { font-size:26px; }
   }
 </style>
 </head>
@@ -124,7 +126,7 @@
         <button id="btnContinue" type="button" disabled>Weiter</button>
         <button id="btnOpt" type="button">Optionen</button>
       </nav>
-      <div class="version">V1.00</div>
+      <div class="version">V1.01</div>
     </div>
   </main>
 
