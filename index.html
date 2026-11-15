@@ -136,7 +136,7 @@
         <button id="btnContinue" type="button" disabled>Weiter</button>
         <button id="btnOpt" type="button">Optionen</button>
       </nav>
-      <div class="version">V1.07</div>
+      <div class="version">V1.08</div>
     </div>
   </main>
 
@@ -163,22 +163,25 @@
   const btnSnd = document.getElementById('btnSnd');
   let wantMusic = true;
   music.volume = 0.7;
-  function showSnd() { btnSnd.textContent = music.paused ? '\u{1F507}' : '\u{1F50A}'; }
+  function showSnd() { btnSnd.textContent = wantMusic ? '\u{1F50A}' : '\u{1F507}'; }   // zeigt, ob Ton gewünscht ist
   function unlock() { document.body.classList.remove('locked'); }
   function playMusic() {
     const p = music.play();
     return (p && p.then) ? p.then(() => true, () => false) : Promise.resolve(!music.paused);
   }
-  music.addEventListener('play', showSnd);
-  music.addEventListener('pause', showSnd);
+  showSnd();
   playMusic().then(ok => { if (ok) unlock(); });           // Versuch ohne Antippen
-  document.addEventListener('pointerdown', (e) => {
-    if (document.body.classList.contains('locked')) { unlock(); playMusic(); return; }
+  // Erster Kontakt mit dem Bildschirm startet die Musik. Auf Touch-Geräten zählt für den Browser
+  // erst das Loslassen (touchend/pointerup/click) als Erlaubnis, deshalb auf alle diese Ereignisse hören.
+  function firstTouch(e) {
+    if (document.body.classList.contains('locked')) unlock();
     if (e.target !== btnSnd && wantMusic && music.paused) playMusic();
-  });
+  }
+  ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown'].forEach(ev => document.addEventListener(ev, firstTouch, { passive: true }));
   btnSnd.addEventListener('click', () => {
-    wantMusic = music.paused;
+    wantMusic = !wantMusic;
     if (wantMusic) playMusic(); else music.pause();
+    showSnd();
   });
   // Pausieren, wenn die Seite in den Hintergrund geht
   document.addEventListener('visibilitychange', () => {
