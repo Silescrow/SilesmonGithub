@@ -1,6 +1,6 @@
 # SILESMON – zum Spielen
 
-Hier liegt nur die spielbare Version von Silesmon (`index.html`, aktuell V1.05).
+Hier liegt nur die spielbare Version von Silesmon (`index.html`, aktuell V1.06).
 
 **Online spielen:** https://silescrow.github.io/SilesmonGithub/
 
