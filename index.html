@@ -191,7 +191,7 @@
         <button id="btnContinue" type="button" disabled>Weiter</button>
         <button id="btnOpt" type="button">Optionen</button>
       </nav>
-      <div class="version">V1.17</div>
+      <div class="version">V1.18</div>
     </div>
   </main>
 
@@ -4830,7 +4830,10 @@ const Game = (() => {
       const wI = Math.max(0, 1 - P.move * 3), wR = Math.max(0, Math.min(1, (P.move - 1.02) / 0.3)), wW = Math.max(0, 1 - wI - wR);
       hero.idle.setEffectiveWeight(wI); hero.walk.setEffectiveWeight(wW); hero.run.setEffectiveWeight(wR);
       hero.walk.timeScale = 1.25; hero.run.timeScale = 1.05;
+      // Kopf und Rücken zuerst auf den Stand ohne Zusatzbewegung zurücksetzen (sonst addiert sich das jedes Bild auf)
+      if (hero.headPre) { hero.head.quaternion.copy(hero.headPre); hero.spine.quaternion.copy(hero.spinePre); }
       hero.mixer.update(dt);
+      if (hero.head && hero.spine) { hero.headPre = hero.head.quaternion.clone(); hero.spinePre = hero.spine.quaternion.clone(); }
       hero.wI = wI;
       if (wI > 0.01) for (const l of hero.legBones) l.bn.quaternion.slerp(l.rest, wI);
       if (wI > 0.01) {                                          // leichtes Atmen und Umschauen im Stehen
@@ -4900,7 +4903,7 @@ const Game = (() => {
     try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch (e) {}
     if (window.resumeMenuFx) window.resumeMenuFx();
   }
-  return { start, stop, _tp: (x, z, d) => { P.x = x; P.z = z; if (d !== undefined) P.dir = d; if (d !== undefined && d > 50) cam.yaw = d - 100; if (camera) camera.position.set(x + Math.sin(cam.yaw) * cam.d, groundH(x, z) + cam.h, z + Math.cos(cam.yaw) * cam.d); }, _cam: (yaw, h) => { cam.yaw = yaw; if (h) cam.h = h; }, _hero: () => hero, _state: () => ({ x: P.x, z: P.z, near: nearSpot && nearSpot.title, rot, GW, GH, colliders: colliders.length }) };
+  return { start, stop, _tp: (x, z, d) => { P.x = x; P.z = z; if (d !== undefined) P.dir = d; if (d !== undefined && d > 50) cam.yaw = d - 100; if (camera) camera.position.set(x + Math.sin(cam.yaw) * cam.d, groundH(x, z) + cam.h, z + Math.cos(cam.yaw) * cam.d); }, _cam: (yaw, h) => { cam.yaw = yaw; if (h) cam.h = h; }, _hero: () => hero, _sim: (n, d) => { for (let i = 0; i < n; i++) { time += d; update(d); } }, _state: () => ({ x: P.x, z: P.z, near: nearSpot && nearSpot.title, rot, GW, GH, colliders: colliders.length }) };
 })();
 
 </script>
