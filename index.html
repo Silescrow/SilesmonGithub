@@ -157,9 +157,12 @@
   body.m2 .logo { display:none; }
   body.m2 .stage { justify-content:flex-end; }
   body.m2 .blur { display:block !important; position:absolute; inset:-30px; width:calc(100% + 60px); height:calc(100% + 60px); object-fit:cover; filter:blur(18px) brightness(.8); -webkit-mask-image:none; mask-image:none; }
-  body.m2 .cover { top:0 !important; left:50% !important; translate:-50% 0; width:var(--cw2, 100%) !important; height:auto !important; object-fit:fill !important;
+  body.m2 .cover { top:var(--ctop, 0px) !important; left:0 !important; translate:none; width:100% !important; height:auto !important; object-fit:fill !important;
     -webkit-mask-image:linear-gradient(to bottom, #000 90%, transparent); mask-image:linear-gradient(to bottom, #000 90%, transparent); transform-origin:50% 40%; }
-  body.m2.narrow .cover { -webkit-mask-image:linear-gradient(to right, transparent, #000 7%, #000 93%, transparent); mask-image:linear-gradient(to right, transparent, #000 7%, #000 93%, transparent); }
+  body.m2.compact nav { grid-template-columns:1.6fr 1fr 1fr; gap:8px; }
+  body.m2.compact #btnNew { grid-column:auto; min-height:56px; font-size:clamp(15px,4.5vw,21px); white-space:nowrap; transform:none; }
+  body.m2.compact nav button { min-height:56px; font-size:clamp(14px,4.2vw,19px); }
+  body.m2.compact .bottom { gap:4px; }
   body.m2 .fx { top:0; height:100%; }
   body.m2 .shade { height:22%; }
   body.m2 .snd { top:10px; }
@@ -188,7 +191,7 @@
         <button id="btnContinue" type="button" disabled>Weiter</button>
         <button id="btnOpt" type="button">Optionen</button>
       </nav>
-      <div class="version">V1.16</div>
+      <div class="version">V1.17</div>
     </div>
   </main>
 
@@ -5008,16 +5011,22 @@ const Game = (() => {
     document.body.style.setProperty('--cw', Math.round(W * s) + 'px');
   }
   fitCover(); addEventListener('resize', fitCover); setTimeout(fitCover, 300);
-  // Neues Cover einpassen: Siles, Brisko und das Logo im Bild bleiben über den Knöpfen sichtbar
+  // Neues Cover immer über die volle Breite (nie schmaler, nie verzerrt).
+  // Auf kurzen Handys: erst etwas Himmel oben abschneiden, dann die Knöpfe kompakter machen,
+  // damit das Logo im Bild über den Knöpfen sichtbar bleibt.
   (function () {
-    const cov = document.querySelector('.cover'), bot = document.querySelector('.bottom'), R = 1672 / 941, LOGO_END = 0.89;
+    const bot = document.querySelector('.bottom'), R = 1672 / 941, LOGO_END = 0.89, SKY = 0.045;
     function fit2() {
-      const W = innerWidth, H = innerHeight;
-      if (W > H && H <= 520) { document.body.classList.remove('narrow'); return; }
-      const room = H - bot.offsetHeight - 22;
-      const cw = Math.min(W, room / (R * LOGO_END));
-      document.body.style.setProperty('--cw2', Math.round(cw) + 'px');
-      document.body.classList.toggle('narrow', cw < W - 4);
+      const W = innerWidth, H = innerHeight, b = document.body;
+      if (W > H && H <= 520) { b.classList.remove('compact'); b.style.setProperty('--ctop', '0px'); return; }
+      const imgH = W * R;
+      b.classList.remove('compact');
+      let room = H - bot.offsetHeight - 16, top = Math.max(-SKY * imgH, Math.min(0, room - LOGO_END * imgH));
+      if (LOGO_END * imgH + top > room) {                     // reicht noch nicht: Knöpfe in eine Reihe
+        b.classList.add('compact'); room = H - bot.offsetHeight - 12;
+        top = Math.max(-SKY * imgH, Math.min(0, room - LOGO_END * imgH));
+      }
+      b.style.setProperty('--ctop', Math.round(top) + 'px');
     }
     fit2(); addEventListener('resize', fit2); setTimeout(fit2, 300);
   })();
