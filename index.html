@@ -82,14 +82,14 @@
   #game { position:fixed; top:0; left:0; z-index:40; display:none; transform-origin:0 0; background:#9fd4ff; overflow:hidden; touch-action:none;
     font-family:"SilesUI",system-ui,sans-serif; color:#fff; }
   #game.on { display:block; }
-  body.inGame > *:not(#game):not(audio):not(script) { display:none !important; }
+  body.inGame > *:not(#game):not(audio):not(script):not(#setPanel) { display:none !important; }
   #gl { position:absolute; inset:0; width:100%; height:100%; display:block; }
   #game button { min-height:0; padding:0; position:absolute; font-family:"SilesLogo","SilesUI",sans-serif; text-transform:uppercase; color:var(--ink);
     border:4px solid var(--ink); background:#fff; box-shadow:3px 3px 0 var(--ink); transition:none; animation:none; }
   #gMenu { left:12px; top:10px; height:42px; padding:0 14px !important; border-radius:12px; font-size:16px; }
   #gFull { right:12px; top:10px; width:42px; height:42px; border-radius:12px; display:grid; place-items:center; }
   #gFull.on { background:#ffd93b !important; }
-  #gFps { position:absolute; right:64px; top:16px; font-size:12px; background:rgba(10,18,56,.55); padding:4px 8px; border-radius:8px; pointer-events:none; }
+  #gFps { position:absolute; right:114px; top:16px; font-size:12px; background:rgba(10,18,56,.55); padding:4px 8px; border-radius:8px; pointer-events:none; }
   #gA, #gB { border-radius:50% !important; display:grid; place-items:center; opacity:.92; }
   #gA { right:26px; bottom:74px; width:86px; height:86px; font-size:34px; background:linear-gradient(#5fe6ff,#12a4f2) !important; color:#fff !important; text-shadow:0 2px 0 var(--ink); }
   #gA.ready { animation:pulse .6s ease-in-out infinite alternate !important; background:linear-gradient(#ffe46b,#ffb019) !important; color:var(--ink) !important; text-shadow:none; }
@@ -128,6 +128,8 @@
     font-family:"SilesLogo","SilesUI",sans-serif; text-transform:uppercase; font-size:17px; color:var(--ink); rotate:-3deg; box-shadow:3px 3px 0 var(--ink); }
   #gDialog p { margin:4px 0 0; font-family:"SilesUI",sans-serif; font-weight:800; font-size:18px; line-height:1.35; }
   #gDialog #gOK { position:static; display:block; margin:6px 0 0 auto; padding:6px 16px 4px !important; border-radius:12px; font-size:17px; background:linear-gradient(#5fe6ff,#12a4f2) !important; color:#fff; text-shadow:0 2px 0 var(--ink); }
+
+  #gSet { right:62px; top:10px; width:42px; height:42px; border-radius:12px; display:grid; place-items:center; font-size:22px; }
   .bottom { width:min(460px,100%); display:flex; flex-direction:column; align-items:center; gap:10px; }
   nav { width:100%; display:grid; grid-template-columns:1fr 1fr; gap:11px 12px; }
   button { font-family:"SilesLogo","SilesUI",sans-serif; text-transform:uppercase; font-size:clamp(20px,6vw,28px); letter-spacing:.3px; color:var(--ink); min-height:clamp(58px,17vw,78px); padding:0 6px;
@@ -181,6 +183,16 @@
   @media (orientation:landscape) and (max-height:520px) {
     body.m2 .cover { left:0 !important; translate:none; width:auto !important; height:100vh !important; -webkit-mask-image:none; mask-image:none; }
   }
+  #setPanel { position:fixed; inset:0; z-index:9999; display:none; place-items:center; background:rgba(10,20,50,.55); }
+  #setPanel.open { display:grid; }
+  #setPanel .sp { width:min(88vw,380px); background:#fffaf0; border:4px solid #1d2a5c; border-radius:22px; padding:18px 18px 16px; box-shadow:0 8px 0 #1d2a5c; text-align:center; font-family:"SilesUI",system-ui,sans-serif; color:#1d2a5c; }
+  #setPanel h2 { margin:0 0 10px; font-size:24px; font-weight:900; }
+  #setPanel .sl { margin:6px 0; font-weight:800; }
+  #setPanel .sq { display:flex; gap:8px; }
+  #setPanel .sq button { flex:1; padding:12px 4px; font:900 16px "SilesUI",system-ui,sans-serif; border:3px solid #1d2a5c; border-radius:14px; background:#fff; color:#1d2a5c; }
+  #setPanel .sq button.on { background:#ffd93b; }
+  #setPanel .sd { min-height:20px; margin:10px 0 14px; font-size:14px; }
+  #setPanel .sx { padding:12px 34px; font:900 18px "SilesUI",system-ui,sans-serif; border:3px solid #1d2a5c; border-radius:14px; background:#4fc3f7; color:#fff; box-shadow:0 4px 0 #1d2a5c; }
 </style>
 </head>
 <body class="m2">
@@ -203,7 +215,7 @@
         <button id="btnContinue" type="button" disabled>Weiter</button>
         <button id="btnOpt" type="button">Optionen</button>
       </nav>
-      <div class="version">V1.20</div>
+      <div class="version">V1.21</div>
     </div>
   </main>
 
@@ -214,6 +226,7 @@
     <canvas id="gl"></canvas>
     <button id="gMenu" type="button">Menü</button>
     <button id="gFull" type="button" aria-label="Vollbild an oder aus"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+    <button id="gSet" type="button" aria-label="Einstellungen">⚙️</button>
     <div id="gFps"></div>
     <div id="gGoal"><span>🎯 Ziel</span><b id="gGoalT"></b></div>
     <div id="gName">Wiesengrund</div>
@@ -249,7 +262,7 @@
   checkSave(); window.onGameStop = checkSave;
   document.getElementById('btnNew').addEventListener('click', () => startGame(false));
   btnCont.addEventListener('click', () => startGame(true));
-  document.getElementById('btnOpt').addEventListener('click', () => toast('Optionen kommen später!'));
+  
   // Musik soll sofort laufen. Browser erlauben Ton aber oft erst nach einem Antippen:
   // 1) beim Laden direkt versuchen, 2) sonst Startbildschirm "Tippe zum Starten".
   const music = document.getElementById('music');
@@ -364,11 +377,33 @@
     }
     fit2(); addEventListener('resize', fit2); setTimeout(fit2, 300);
   })();
+  // ---------- Einstellungen (Menü und im Spiel) ----------
+  (function () {
+    const QN = ['Niedrig', 'Mittel', 'Hoch'], QD = ['720p, weniger Gras – am flüssigsten', '900p, viel Gras', 'Full HD 1080p, alles an'];
+    let q = 1; try { const v = localStorage.getItem('silesmon_quality'); if (v !== null) q = +v; } catch (e) {}
+    window.SILES_Q = q;
+    const p = document.createElement('div'); p.id = 'setPanel';
+    p.innerHTML = '<div class="sp"><h2>Einstellungen</h2><p class="sl">Grafik</p><div class="sq"></div><p class="sd"></p><button class="sx" type="button">Fertig</button></div>';
+    document.body.appendChild(p);
+    const row = p.querySelector('.sq'), desc = p.querySelector('.sd');
+    QN.forEach((n, i) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = n; b.onclick = () => set(i); row.appendChild(b); });
+    function set(i) {
+      q = i; window.SILES_Q = i; try { localStorage.setItem('silesmon_quality', i); } catch (e) {}
+      [...row.children].forEach((b, k) => b.classList.toggle('on', k === i)); desc.textContent = QD[i];
+      if (typeof Game !== 'undefined' && Game.setQuality) Game.setQuality(i);
+      if (typeof Game !== 'undefined' && Game.click) Game.click();
+    }
+    set(q);
+    window.openSettings = () => { p.classList.add('open'); };
+    p.querySelector('.sx').onclick = () => p.classList.remove('open');
+    p.addEventListener('click', e => { if (e.target === p) p.classList.remove('open'); });
+    const bo = document.getElementById('btnOpt'); if (bo) bo.addEventListener('click', window.openSettings);
+  })();
 </script>
 <script>
   // Spieldaten im Hintergrund nachladen, damit das Hauptmenü sofort erscheint
   window.addEventListener('load', () => {
-    const s = document.createElement('script'); s.src = 'silesmon-data.js?v=V1.20';
+    const s = document.createElement('script'); s.src = 'silesmon-data.js?v=V1.21';
     s.onload = () => { if (window.pendingStart !== undefined) startGame(window.pendingStart); };
     s.onerror = () => toast('Spiel konnte nicht geladen werden. Bitte neu laden.');
     document.body.appendChild(s);

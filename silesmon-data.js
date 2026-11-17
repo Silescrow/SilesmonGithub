@@ -3878,7 +3878,14 @@ const SILES3D = {"glb": "Z2xURgIAAABgxSAAzGICAEpTT057ImFzc2V0Ijp7ImdlbmVyYXRvciI
 const Game = (() => {
   const $ = id => document.getElementById(id);
   let inited = false, running = false, raf = 0, last = 0, time = 0;
-  let renderer, scene, camera, sky, grassMat, grad;
+  let renderer, scene, camera, sky, grassMat, grad, grassIM, flowerIM;
+  function setQuality(q) {                                     // Niedrig / Mittel / Hoch
+    window.SILES_Q = q; const k = [0.4, 0.7, 1][q];
+    if (grassIM) grassIM.count = Math.floor(grassIM.userData.full * k);
+    if (flowerIM) flowerIM.count = Math.floor(flowerIM.userData.full * (0.5 + k * 0.5));
+    clouds.forEach((c, i) => { c.visible = q > 0 || i % 2 === 0; });
+    if (renderer) layout();
+  }
   let GW = 0, GH = 0, rot = false;
   const input = { x: 0, y: 0, run: false }, keys = {};
   const colliders = [], spots = [], clouds = [];
@@ -4124,7 +4131,7 @@ const Game = (() => {
   // Echtes Gebirge rund ums Tal: Grate, Täler und Gipfel aus Rauschen, Wald unten, Almwiesen, Fels an steilen Hängen, Schnee oben
   function ridged(x, z) {
     let sum = 0, amp = 0.55, f = 1, w = 1;
-    for (let o = 0; o < 6; o++) {
+    for (let o = 0; o < 4; o++) {
       let n = 1 - Math.abs(noise(x * f + o * 17.3, z * f - o * 9.1) * 2 - 1); n *= n; n *= w;
       w = Math.min(1, n * 1.6); sum += n * amp; f *= 2.03; amp *= 0.5;
     }
@@ -4132,7 +4139,7 @@ const Game = (() => {
   }
   function buildMountains() {
     const peaks = [];
-    for (let i = 0; i < 9; i++) { const a = i / 9 * 6.2832 + 0.35 * Math.sin(i * 7.1), r = 330 + 80 * ((i * 37) % 10) / 10; peaks.push([Math.cos(a) * r, Math.sin(a) * r, 300 + 110 * ((i * 53) % 10) / 10, 110 + 30 * ((i * 71) % 10) / 10]); }
+    for (let i = 0; i < 9; i++) { const a = i / 9 * 6.2832 + 0.35 * Math.sin(i * 7.1), r = 330 + 80 * ((i * 37) % 10) / 10; peaks.push([Math.cos(a) * r, Math.sin(a) * r, 230 + 90 * ((i * 53) % 10) / 10, 240 + 60 * ((i * 71) % 10) / 10]); }
     const hs = [], AS = 480, RS = 90, R0 = 150, R1 = 540, pos = new Float32Array(AS * (RS + 1) * 3), idx = [];
     for (let j = 0; j <= RS; j++) {
       const q = j / RS, r = R0 + (R1 - R0) * q * q * 0.55 + (R1 - R0) * q * 0.45;
@@ -4141,9 +4148,9 @@ const Game = (() => {
         const e = Math.min(1, Math.max(0, (r - R0) / 270)), env = e * e * (3 - 2 * e);
         const big = noise(x * 0.003 + 3, z * 0.003 - 5);                    // große Massive und Pässe
         const rf = ridged(x * 0.0042, z * 0.0042);
-        let h = env * (10 + 40 * big) + Math.pow(env, 2.2) * (110 + 260 * big) * Math.pow(Math.min(1, rf * 1.5), 2.1);
+        let h = env * (10 + 40 * big) + Math.pow(env, 2.2) * (80 + 170 * big) * Math.pow(Math.min(1, rf * 1.4), 1.5);
         for (const pk of peaks) {                                    // markante, spitze Hauptgipfel
-          const aa = Math.atan2(z - pk[1], x - pk[0]), d = Math.hypot(x - pk[0], z - pk[1]) / (0.7 + 0.6 * noise(aa * 1.6 + pk[0], pk[1] * 0.01) + 0.15 * Math.sin(aa * 5 + pk[2])); if (d < pk[3]) h = Math.max(h, pk[2] * Math.pow(1 - d / pk[3], 1.45) * (0.75 + 0.45 * rf) + h * 0.3);
+          const aa = Math.atan2(z - pk[1], x - pk[0]), d = Math.hypot(x - pk[0], z - pk[1]) / (0.7 + 0.6 * noise(aa * 1.6 + pk[0], pk[1] * 0.01) + 0.15 * Math.sin(aa * 5 + pk[2])); if (d < pk[3]) h = Math.max(h, env * pk[2] * (function (u) { return u * u * (3 - 2 * u) * 0.55 + u * 0.45; })(1 - d / pk[3]) * (0.72 + 0.4 * rf) + h * 0.3);
         }
         hs.push(h);
         const k = (j * AS + i) * 3; pos[k] = x; pos[k + 1] = groundH(x, z) - 1.5 + h; pos[k + 2] = z;
@@ -4169,39 +4176,27 @@ const Game = (() => {
         'float fbm(vec2 p){ float s = 0.0, a = 0.5; for(int o=0;o<4;o++){ s += vn(p)*a; p = p*2.07 + 3.1; a *= 0.5; } return s; }',
         'void main(){',
         '  vec3 n = normalize(vN); float y = vW.y; vec2 p = vW.xz;',
-        '  float f1 = fbm(p*0.02), f2 = fbm(p*0.07), f3 = vn(p*0.12);',
-        '  float slope = 1.0 - n.y;',
-        // Farben wie ein gemaltes Alpenbild: blauer Schiefer-Fels, dunkle Tannen, saftige Almen
-        '  vec3 forest = mix(vec3(0.06,0.20,0.14), vec3(0.12,0.30,0.18), f2) * (0.7 + 0.6*f3);',
-        '  vec3 meadow = mix(vec3(0.30,0.52,0.24), vec3(0.45,0.62,0.30), f1);',
-        '  float strata = vn(vec2((p.x+p.y)*0.01, y*0.04 + f1*5.0 + f2*2.0));',
-        '  vec3 rock = mix(vec3(0.22,0.26,0.38), vec3(0.46,0.50,0.64), strata) * (0.75 + 0.45*f2);',
-        '  rock = mix(rock, vec3(0.42,0.38,0.46), smoothstep(0.55,0.85,f1)*0.45);',
-        '  float tree = 70.0 + f1*45.0;',
-        '  float slopeN = slope + (f2-0.5)*0.18;',
-        '  vec3 c = mix(forest, meadow, smoothstep(tree-6.0, tree+10.0, y) * 0.8);',
-        '  c = mix(c, rock, smoothstep(tree+15.0, tree+55.0, y));',
-        '  c = mix(c, rock, smoothstep(0.32, 0.5, slopeN) * smoothstep(tree-40.0, tree+10.0, y));',
-        // Schnee: oben fast alles, darunter in Rinnen und auf flachen Bändern
-        '  vec2 dn = normalize(n.xz + 1e-4); vec2 pr = vec2(-dn.y, dn.x);',
-        '  float streak = fbm(vec2(dot(p, pr)*0.035, y*0.006 + f1*2.0));',
-        '  float snowL = 135.0 + (f1-0.5)*60.0;',
-        '  float hi = smoothstep(snowL-20.0, snowL+40.0, y + (f2-0.5)*40.0);',
-        '  float flt = smoothstep(0.55, 0.75, n.y);',
-        '  float snow = hi * max(flt, smoothstep(0.48, 0.62, streak)) ;',
-        '  snow = max(snow, smoothstep(snowL+40.0, snowL+110.0, y) * smoothstep(0.28, 0.42, streak + flt*0.5 + (y-snowL)*0.0015));',
-        '  snow = clamp(snow * 1.3, 0.0, 1.0);',
-        // Licht
-        '  float dif = dot(n, uSun)*0.5 + 0.5; dif *= dif;',
-        '  vec3 L = vec3(1.0,0.95,0.85)*dif*1.05 + vec3(0.55,0.65,0.95)*(0.38 + 0.15*n.y);',
-        '  vec3 col = c * L;',
-        '  vec3 sn = mix(vec3(0.74,0.80,0.96), vec3(1.0,0.99,0.97), smoothstep(0.1, 0.7, dif));',
-        '  col = mix(col, sn * (0.9 + 0.1*f3), snow);',
-        // Luftperspektive: weit Entferntes wird blau-lila und heller
+        '  float f1 = fbm(p*0.012), f2 = fbm(p*0.05), f3 = vn(p*0.1);',
+        '  float slope = 1.0 - n.y + (f2-0.5)*0.12;',
+        // Weiche, gemalte Farben: grüne Hänge, warmer grau-beiger Fels, saubere Schneekappen
+        '  vec3 grass = mix(vec3(0.30,0.52,0.22), vec3(0.42,0.60,0.26), f1);',
+        '  vec3 forest = mix(vec3(0.14,0.33,0.20), vec3(0.20,0.40,0.22), f2);',
+        '  vec3 rock = mix(vec3(0.46,0.44,0.44), vec3(0.60,0.57,0.52), f2);',
+        '  vec3 c = mix(forest, grass, smoothstep(0.35, 0.65, f1 + (y-60.0)*0.004));',
+        '  c = mix(c, rock, smoothstep(0.42, 0.58, slope) );',
+        '  c = mix(c, rock, smoothstep(150.0, 210.0, y + (f1-0.5)*60.0) * 0.85);',
+        '  float snowL = 228.0 + (f1-0.5)*70.0 + (f2-0.5)*25.0 - n.y*25.0;',
+        '  float snow = smoothstep(snowL-6.0, snowL+6.0, y);',
+        // Licht in weichen Stufen wie gemalt
+        '  float dif = dot(n, uSun)*0.5 + 0.5;',
+        '  float band = smoothstep(0.30, 0.45, dif)*0.45 + smoothstep(0.62, 0.78, dif)*0.35 + 0.35;',
+        '  vec3 L = mix(vec3(0.62,0.70,0.92), vec3(1.05,1.0,0.92), band);',
+        '  vec3 col = mix(c, vec3(0.97,0.98,1.0), snow) * L;',
+        // Starker blauer Dunst in der Ferne
         '  float d = length(vW - cameraPosition);',
         '  float fog = smoothstep(uNear, uFar, d);',
-        '  vec3 haze = mix(vec3(0.62,0.70,0.92), vec3(0.72,0.80,0.98), clamp(y/300.0,0.0,1.0));',
-        '  col = mix(col, haze, fog*0.6);',
+        '  vec3 haze = mix(vec3(0.60,0.74,0.92), vec3(0.74,0.86,0.99), clamp(y/320.0,0.0,1.0));',
+        '  col = mix(col, haze, fog*0.7);',
         '  gl_FragColor = vec4(col, 1.0);',
         '}'].join('\n')
     });
@@ -4658,7 +4653,7 @@ const Game = (() => {
     }
     f = (t, o) => { o.position.set(t[0], groundH(t[0], t[1]) + 0.42, t[1]); o.scale.set(0.13 * t[2], 0.1 * t[2], 0.13 * t[2]); o.rotation.set(0, 0, 0); };
     f.color = (t, c, i) => c.setHex([0xffffff, 0xffd84a, 0xff8fb3, 0xc9a6ff, 0xff7a5a][i % 5]);
-    inst(new THREE.SphereGeometry(1, 7, 5), new THREE.MeshBasicMaterial({ color: 0xffffff }), flowers, f);
+    flowerIM = inst(new THREE.SphereGeometry(1, 7, 5), new THREE.MeshBasicMaterial({ color: 0xffffff }), flowers, f); flowerIM.userData.full = flowers.length;
 
     // Wehendes Gras
     const blades = [];
@@ -4693,7 +4688,7 @@ const Game = (() => {
     });
     f = (t, o) => { o.position.set(t[0], groundH(t[0], t[1]), t[1]); o.scale.set(t[2], t[2], t[2]); o.rotation.set(0, t[3], 0); };
     f.color = (t, c) => meadowCol(t[0], t[1], c).multiplyScalar(0.95 + ((t[3] * 7.3) % 1) * 0.12);
-    inst(bg, grassMat, blades, f);
+    grassIM = inst(bg, grassMat, blades, f); grassIM.userData.full = blades.length;
   }
   function blocked(x, z) {                                       // kein Gras/Blumen auf Platz, Wegen, in Häusern
     if (Math.hypot(x, z) < 8.1 || onPath(x, z)) return true;
@@ -4832,7 +4827,7 @@ const Game = (() => {
     scene = new THREE.Scene();
     camera = new THREE.PerspectiveCamera(48, 16 / 9, 0.3, 1100);
     buildSkyAndLight(); buildGround(); buildVillage(); buildNature(); buildPlayer(); buildLife();
-    bindInput(); inited = true;
+    bindInput(); inited = true; setQuality(window.SILES_Q === undefined ? 1 : window.SILES_Q);
   }
   function layout() {
     const vw = innerWidth, vh = innerHeight, g = $('game');
@@ -4842,7 +4837,8 @@ const Game = (() => {
     g.style.left = rot ? vw + 'px' : '0'; g.style.transform = rot ? 'rotate(90deg)' : 'none';
     if (!renderer) return;
     // Volle Auflösung bis 1080p Höhe, nicht mehr (schont den Akku)
-    const pr = Math.min(window.devicePixelRatio || 1, 1080 / GH, 3);
+    const qh = [720, 900, 1080][window.SILES_Q === undefined ? 1 : window.SILES_Q];        // Full HD ist das Maximum
+    const pr = Math.min(window.devicePixelRatio || 1, qh / GH, qh * 16 / 9 / GW, 3);
     renderer.setPixelRatio(pr); renderer.setSize(GW, GH, false);
     camera.aspect = GW / GH; camera.updateProjectionMatrix();
   }
@@ -4884,6 +4880,7 @@ const Game = (() => {
     $('gTalk').addEventListener('click', () => { SFX.click(); actionA(); });
     $('gMenu').addEventListener('click', stop);
     // Vollbild-Knopf oben rechts
+    $('gSet').addEventListener('click', () => { SFX.click(); if (window.openSettings) window.openSettings(); });
     $('gFull').addEventListener('click', () => {
       try {
         if (document.fullscreenElement) document.exitFullscreen();
@@ -5065,6 +5062,6 @@ const Game = (() => {
     if (window.onGameStop) window.onGameStop();
   }
   window.addEventListener('pagehide', () => { if (running) writeSave(); });
-  return { start, stop, hasSave: () => !!readSave(), _healer: () => [healer.g.position.x, healer.g.position.z], click: () => SFX.click(), _tp: (x, z, d) => { P.x = x; P.z = z; if (d !== undefined) P.dir = d; if (d !== undefined && d > 50) cam.yaw = d - 100; if (camera) camera.position.set(x + Math.sin(cam.yaw) * cam.d, groundH(x, z) + 1.6 + Math.sin(cam.pitch) * cam.d, z + Math.cos(cam.yaw) * cam.d); }, _cam: (yaw, h, pitch) => { cam.yaw = yaw; if (h) cam.pitch = Math.atan2(h - 1.6, cam.d); if (pitch !== undefined) cam.pitch = pitch; }, _q: () => Q, _skip: () => { if (dialogOpen) { talkIdx = talkLines.length - 1; nextLine(); } }, _hero: () => hero, _sim: (n, d) => { for (let i = 0; i < n; i++) { time += d; update(d); } }, _state: () => ({ x: P.x, z: P.z, near: nearSpot && nearSpot.title, rot, GW, GH, colliders: colliders.length }) };
+  return { setQuality, start, stop, hasSave: () => !!readSave(), _healer: () => [healer.g.position.x, healer.g.position.z], click: () => SFX.click(), _tp: (x, z, d) => { P.x = x; P.z = z; if (d !== undefined) P.dir = d; if (d !== undefined && d > 50) cam.yaw = d - 100; if (camera) camera.position.set(x + Math.sin(cam.yaw) * cam.d, groundH(x, z) + 1.6 + Math.sin(cam.pitch) * cam.d, z + Math.cos(cam.yaw) * cam.d); }, _cam: (yaw, h, pitch) => { cam.yaw = yaw; if (h) cam.pitch = Math.atan2(h - 1.6, cam.d); if (pitch !== undefined) cam.pitch = pitch; }, _q: () => Q, _skip: () => { if (dialogOpen) { talkIdx = talkLines.length - 1; nextLine(); } }, _hero: () => hero, _sim: (n, d) => { for (let i = 0; i < n; i++) { time += d; update(d); } }, _state: () => ({ x: P.x, z: P.z, near: nearSpot && nearSpot.title, rot, GW, GH, colliders: colliders.length }) };
 })();
 
