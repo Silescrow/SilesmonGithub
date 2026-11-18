@@ -4172,6 +4172,21 @@ const Game = (() => {
     const m = new THREE.Mesh(geo, mat); m.position.set(x, h / 2 - 4, z); m.rotation.y = sd; scene.add(m);
   }
 
+  // Kachelbare Rausch-Textur (R: mehrlagiges Rauschen, G: einfaches Rauschen), einmal berechnet
+  function noiseTex() {
+    const N = 256, d = new Uint8Array(N * N * 4), lat = (c, sx) => { const a = new Float32Array(c * c); for (let i = 0; i < a.length; i++) a[i] = hash(i % c + sx, Math.floor(i / c) - sx); return a; };
+    const oct = [8, 16, 32, 64].map((c, k) => ({ c, g: lat(c, k * 31) }));
+    const smp = (o, x, y) => { const c = o.c, fx = x / N * c, fy = y / N * c, ix = Math.floor(fx), iy = Math.floor(fy), u = fx - ix, v = fy - iy, su = u * u * (3 - 2 * u), sv = v * v * (3 - 2 * v);
+      const at = (i, j) => o.g[((j % c) + c) % c * c + ((i % c) + c) % c];
+      return (at(ix, iy) * (1 - su) + at(ix + 1, iy) * su) * (1 - sv) + (at(ix, iy + 1) * (1 - su) + at(ix + 1, iy + 1) * su) * sv; };
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      let f = 0, a = 0.5, t = 0; for (const o of oct) { f += smp(o, x, y) * a; t += a; a *= 0.5; }
+      const i = (y * N + x) * 4; d[i] = Math.round(f / t * 255); d[i + 1] = Math.round(smp(oct[1], x, y) * 255); d[i + 2] = 0; d[i + 3] = 255;
+    }
+    const t = new THREE.DataTexture(d, N, N); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearMipmapLinearFilter; t.generateMipmaps = true; t.needsUpdate = true;
+    return t;
+  }
+
   // Echtes Gebirge rund ums Tal: Grate, Täler und Gipfel aus Rauschen, Wald unten, Almwiesen, Fels an steilen Hängen, Schnee oben
   function ridged(x, z) {
     let sum = 0, amp = 0.55, f = 1, w = 1;
@@ -4184,7 +4199,7 @@ const Game = (() => {
   function buildMountains() {
     const peaks = [];
     for (let i = 0; i < 9; i++) { const a = i / 9 * 6.2832 + 0.35 * Math.sin(i * 7.1), r = 330 + 80 * ((i * 37) % 10) / 10; peaks.push([Math.cos(a) * r, Math.sin(a) * r, 230 + 90 * ((i * 53) % 10) / 10, 240 + 60 * ((i * 71) % 10) / 10]); }
-    const hs = [], AS = 640, RS = 120, R0 = 150, R1 = 540, pos = new Float32Array(AS * (RS + 1) * 3), idx = [];
+    const hs = [], AS = 400, RS = 80, R0 = 150, R1 = 540, pos = new Float32Array(AS * (RS + 1) * 3), idx = [];
     for (let j = 0; j <= RS; j++) {
       const q = j / RS, r = R0 + (R1 - R0) * q * q * 0.55 + (R1 - R0) * q * 0.45;
       for (let i = 0; i < AS; i++) {
@@ -4208,16 +4223,16 @@ const Game = (() => {
     const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setIndex(idx); geo.computeVertexNormals();
     // Pixel-genaues Gelände: Wald, Almwiesen, Fels mit Schichten, Schnee auf Gipfeln und flachen Stellen, Dunst in der Ferne
     const mat = new THREE.ShaderMaterial({
-      uniforms: { uSun: { value: SUN }, uFog: { value: new THREE.Color(0xbfe8ff) }, uNear: { value: 160 }, uFar: { value: 780 }, uDetail: { value: 1 } },
+      uniforms: { uSun: { value: SUN }, uFog: { value: new THREE.Color(0xbfe8ff) }, uNear: { value: 160 }, uFar: { value: 780 }, uDetail: { value: 1 }, uNoise: { value: noiseTex() } },
       vertexShader: [
         'varying vec3 vW; varying vec3 vN;',
         'void main(){ vec4 w = modelMatrix * vec4(position,1.0); vW = w.xyz; vN = normal; gl_Position = projectionMatrix * viewMatrix * w; }'].join('\n'),
       fragmentShader: [
         'uniform vec3 uSun; uniform vec3 uFog; uniform float uNear; uniform float uFar; uniform float uDetail; varying vec3 vW; varying vec3 vN;',
-        'float h21(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }',
-        'float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);',
-        '  return mix(mix(h21(i), h21(i+vec2(1,0)), f.x), mix(h21(i+vec2(0,1)), h21(i+vec2(1,1)), f.x), f.y); }',
-        'float fbm(vec2 p){ float s = 0.0, a = 0.5; for(int o=0;o<4;o++){ s += vn(p)*a; p = p*2.07 + 3.1; a *= 0.5; } return s; }',
+        'uniform sampler2D uNoise;',
+        // Rauschen aus einer vorberechneten Textur statt in jedem Pixel neu (spart viel Leistung)
+        'float vn(vec2 p){ return texture2D(uNoise, p * 0.0625).g; }',
+        'float fbm(vec2 p){ return texture2D(uNoise, p * 0.125).r; }',
         'void main(){',
         '  vec3 n = normalize(vN); float y = vW.y; vec2 p = vW.xz;',
         // Feine Felsstruktur: dreiseitig projiziertes Rauschen als Relief (Risse, Kanten, Geröll)
