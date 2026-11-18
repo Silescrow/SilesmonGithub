@@ -4737,12 +4737,36 @@ const Game = (() => {
       inst(new THREE.ConeGeometry(1, 1, 7), white, pines, f);
     });
     }
+    // Echter Laubbusch: dunkler, unregelmäßiger Kern und viele einzelne Blätter, die nach außen zeigen
+    function bushGeo(seed, leafN) {
+      let sd = seed; const rr = () => { sd = (sd * 16807) % 2147483647; return sd / 2147483647; };
+      const core = new THREE.IcosahedronGeometry(1, 2), cp = core.attributes.position, P = [], C = [], c = new THREE.Color();
+      const ci = core.index ? core.index.array : null;
+      const tmp = [];
+      for (let i = 0; i < cp.count; i++) { const x = cp.getX(i), y = cp.getY(i), z = cp.getZ(i), k = 0.78 + 0.22 * noise(x * 2.3 + seed, z * 2.3 + y * 1.7); tmp.push([x * k, Math.max(y * k, -0.35), z * k]); }
+      const tri = ci ? Array.from(ci) : [...Array(cp.count).keys()];
+      for (const i of tri) { const p = tmp[i]; P.push(...p); c.setRGB(0.10, 0.24, 0.10).lerp(new THREE.Color(0.16, 0.36, 0.14), (p[1] + 0.4) / 1.4); C.push(c.r, c.g, c.b); }
+      const leaf = [[0, 0, 0], [0.09, 0.02, 0.1], [0, 0, 0.24], [-0.09, 0.02, 0.1]], up = new THREE.Vector3(), q = new THREE.Quaternion(), e = new THREE.Euler(), v = new THREE.Vector3();
+      for (let n = 0; n < leafN; n++) {
+        const th = rr() * 6.2832, ph = Math.acos(1 - rr() * 1.75), dir = new THREE.Vector3(Math.sin(ph) * Math.cos(th), Math.cos(ph), Math.sin(ph) * Math.sin(th));
+        const base = dir.clone().multiplyScalar(0.72 + rr() * 0.22); if (base.y < -0.3) continue;
+        e.set(-0.4 + rr() * 0.8, rr() * 6.28, -0.4 + rr() * 0.8); q.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir.clone().add(new THREE.Vector3(rr() - 0.5, 0.3, rr() - 0.5).multiplyScalar(0.6)).normalize());
+        const sz = 0.8 + rr() * 0.6, light = 0.75 + 0.45 * (dir.y * 0.5 + 0.5) + (rr() - 0.5) * 0.2;
+        c.setRGB(0.20 * light, 0.46 * light, 0.17 * light).lerp(new THREE.Color(0.42, 0.55, 0.18), rr() * 0.25);
+        const pts = leaf.map(p => v.set(p[0] * sz, p[1] * sz, p[2] * sz).applyQuaternion(q).add(base).toArray());
+        for (const [a, b, d] of [[0, 1, 2], [0, 2, 3]]) for (const k of [a, b, d]) { P.push(...pts[k]); const sh = k === 0 ? 0.7 : 1; C.push(c.r * sh, c.g * sh, c.b * sh); }
+      }
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(C, 3)); g.computeVertexNormals();
+      return g;
+    }
+    const bushMat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
+    const bushGeos = [bushGeo(11, 260), bushGeo(29, 260), bushGeo(47, 260)];
     // Büsche im Süden und Steine
     const bushes = [], rocks = [];
     for (let i = 0; i < 90; i++) { const a = rnd() * 6.283;  if (Math.abs(Math.cos(a)) < 0.1 && Math.sin(a) < 0) continue; const _a = a, r = VR + 1.5 + rnd() * 9; bushes.push([Math.cos(a) * r, Math.sin(a) * r, 0.6 + rnd() * 0.6]); }
     f = (t, o) => { o.position.set(t[0], groundH(t[0], t[1]) + 0.45 * t[2], t[1]); o.scale.set(1.3 * t[2], 0.9 * t[2], 1.3 * t[2]); o.rotation.set(0, t[0], 0); };
-    f.color = (t, c, i) => c.setHex(greens[i % 4]);
-    inst(new THREE.IcosahedronGeometry(1, 1), white, bushes, f);
+    f = (t, o) => { o.position.set(t[0], groundH(t[0], t[1]) + 0.35 * t[2], t[1]); o.scale.set(1.25 * t[2], 1.0 * t[2], 1.25 * t[2]); o.rotation.set(0, t[0] * 2.3, 0); };
+    bushGeos.forEach((bg, k) => inst(bg, bushMat, bushes.filter((t, i) => i % 3 === k), f));
     for (let i = 0; i < 50; i++) { const a = rnd() * 6.283, r = 10 + rnd() * (VR - 12), x = Math.cos(a) * r, z = Math.sin(a) * r; if (!onPath(x, z)) rocks.push([x, z, 0.25 + rnd() * 0.4]); }
     f = (t, o) => { o.position.set(t[0], groundH(t[0], t[1]) + 0.12 * t[2], t[1]); o.scale.set(t[2] * 1.4, t[2], t[2] * 1.1); o.rotation.set(t[0], t[1], 0); };
     inst(new THREE.IcosahedronGeometry(1, 0), mat(0xa7a5b4), rocks, f);
@@ -4758,11 +4782,16 @@ const Game = (() => {
     inst(new THREE.CylinderGeometry(0.36, 0.36, 0.06, 12), mat(0xffd21f), sunflowers, f);
     f = (t, o) => { o.position.set(t[0], 1.76, t[1] + 0.1); o.scale.set(1, 1, 1); o.rotation.set(Math.PI / 2 - 0.25, 0, 0); };
     inst(new THREE.CylinderGeometry(0.17, 0.17, 0.08, 10), mat(0x7a4a22), sunflowers, f);
-    f = (t, o) => { o.position.set(t[0], 0.5, t[1]); o.scale.set(0.75, 0.62, 0.75); o.rotation.set(0, 0, 0); };
-    inst(new THREE.IcosahedronGeometry(1, 1), mat(0x3f9647), roses, f);
+    f = (t, o) => { o.position.set(t[0], 0.42, t[1]); o.scale.set(0.72, 0.62, 0.72); o.rotation.set(0, t[0] * 1.7, 0); };
+    inst(bushGeos[1], bushMat, roses, f);
     const rd = []; for (const r of roses) for (let k = 0; k < 7; k++) { const a = k * 0.9, e = 0.5 + (k % 3) * 0.3; rd.push([r[0] + Math.cos(a) * 0.62 * Math.cos(e - 0.4), 0.5 + Math.sin(e) * 0.5, r[1] + Math.sin(a) * 0.62 * Math.cos(e - 0.4)]); }
-    f = (t, o) => { o.position.set(t[0], t[1], t[2]); o.scale.set(0.13, 0.13, 0.13); o.rotation.set(0, 0, 0); };
-    inst(new THREE.SphereGeometry(1, 7, 5), mat(0xe23b4a), rd, f);
+    // echte Rosenblüten: mehrere Lagen gewölbter Blütenblätter
+    const roseG = (() => {
+      const outer = flowerGeo({ h: 0.0, n: 6, len: 0.11, wid: 0.06, tilt: 0.9, curl: -0.5, cup: 0.9, c0: 0x8a0a1a, c1: 0xd81e34, cr: 0.03, cc: 0xa01020, cc2: 0x700818, noStem: true });
+      return outer;
+    })();
+    f = (t, o) => { o.position.set(t[0], t[1] - 0.04, t[2]); o.scale.setScalar(1.0); o.rotation.set((t[0] * 7) % 0.6 - 0.3, t[2] * 3, (t[2] * 5) % 0.6 - 0.3); };
+    inst(roseG, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), rd, f);
 
     // Blumen
     const flowers = [];
@@ -4790,19 +4819,23 @@ const Game = (() => {
         for (let j = 0; j < S; j++) for (let k = 0; k < 2; k++) { const a = j * 3 + k, b = a + 1, c = a + 3, d = a + 4; I.push(base[a], base[c], base[b], base[b], base[c], base[d]); }
       }
       const green = new THREE.Color(0x3c7f2e), dark = new THREE.Color(0x2a5c22), H = spec.h;
+      if (!spec.noStem) {
       // Stängel (sechseckig, leicht gebogen)
       const seg = 6, ring = [];
       for (let j = 0; j <= 4; j++) { const t = j / 4, y = H * t, bx = Math.sin(t * 1.4) * 0.02; for (let k = 0; k < seg; k++) { const a = k / seg * 6.2832; ring.push(v(bx + Math.cos(a) * 0.008, y, Math.sin(a) * 0.008, col.copy(dark).lerp(green, t))); } }
       for (let j = 0; j < 4; j++) for (let k = 0; k < seg; k++) { const a = j * seg + k, b = j * seg + (k + 1) % seg, c = a + seg, d = b + seg; I.push(a, b, c, b, d, c); }
       // Laubblätter
       blade(0.16, 0.035, 0.5, 0.3, 0.03, dark, green, -0.6, 0.5); blade(0.13, 0.03, 0.6, 3.6, 0.1, dark, green, -0.7, 0.5);
-      const top = H + 0.0, cx = Math.sin(1.4) * 0.02;
+      }
+      const top = H + 0.0, cx = spec.noStem ? 0 : Math.sin(1.4) * 0.02;
       const off = P.length;
       // Blütenblätter
       for (let i = 0; i < spec.n; i++) {
         const rot = i / spec.n * 6.2832 + (i % 2) * 0.12, l = spec.len * (0.9 + 0.2 * ((i * 7) % 3) / 2);
         blade(l, spec.wid, spec.tilt, rot, top + (i % 2) * 0.004, new THREE.Color(spec.c0), new THREE.Color(spec.c1), spec.curl, spec.cup, spec.r0 || 0.008);
       }
+      if (spec.noStem) for (let i = 0; i < 5; i++)                       // innere, enger geschlossene Lage (Rose)
+        blade(spec.len * 0.7, spec.wid * 0.8, 1.25, i / 5 * 6.2832 + 0.6, top + 0.01, new THREE.Color(spec.c0), new THREE.Color(spec.c1), -0.6, 1.0, 0.004);
       for (let i = off / 3; i < P.length / 3; i++) P[i * 3] += cx;
       // Blütenmitte: gewölbte Scheibe
       const cs = spec.cr, cc = new THREE.Color(spec.cc), cc2 = new THREE.Color(spec.cc2), c0 = v(cx, top + cs * 0.9, 0, cc);
