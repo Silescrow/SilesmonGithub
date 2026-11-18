@@ -3880,6 +3880,7 @@ const NPC3D = {"heil": {"glb": "Z2xURgIAAAAkew4ArFwCAEpTT057ImFzc2V0Ijp7ImdlbmVy
 const Game = (() => {
   const $ = id => document.getElementById(id);
   let inited = false, running = false, raf = 0, last = 0, time = 0;
+  const farIM = [];
   let backdrop, renderer, scene, camera, sky, grassMat, grad, grassIM, flowerIM, mtnMat;
   function setQuality(q) {                                     // Niedrig / Mittel / Hoch
     window.SILES_Q = q; const k = [0.4, 0.7, 1][q];
@@ -3887,6 +3888,7 @@ const Game = (() => {
     if (flowerIM) flowerIM.parts.forEach(im => { im.count = Math.floor(im.userData.full * (0.5 + k * 0.5)); });
     clouds.forEach((c, i) => { c.visible = q > 0 || i % 2 === 0; });
     if (mtnMat) mtnMat.uniforms.uDetail.value = [0, 0.6, 1][q];
+    farIM.forEach(im => { if (im.userData.full === undefined) im.userData.full = im.count; im.count = Math.floor(im.userData.full * [0.5, 0.8, 1][q]); });
     if (renderer) layout();
   }
   let GW = 0, GH = 0, rot = false;
@@ -4740,9 +4742,13 @@ const Game = (() => {
       if (Math.hypot(x, z) < VILLAGE_R + 2) colliders.push({ x, z, r: 0.55 });
     }
     for (const [x, z] of [[-44, -6], [44, -8], [-44, 22], [44, 20], [-6, -45], [8, -48], [-40, -44], [40, -44], [-34, 40], [34, 40], [-7, 15], [7, 17], [-21, -48], [22, -48]]) tryTree(x, z, true);
-    for (let i = 0; i < 520; i++) {                                    // Wald rund ums Dorf
-      const a = rnd() * 6.283, r = VR + 3 + Math.pow(rnd(), 0.8) * 75, x = Math.cos(a) * r, z = Math.sin(a) * r;
-      tryTree(x, z, false);
+    // Extrem dichter Wald direkt hinter dem Zaun: vorne echte Baummodelle, dahinter günstige Bäume (sehen von weitem gleich aus)
+    const farTrees = [];
+    for (let gx = -VR - 62; gx <= VR + 62; gx += 3.1) for (let gz = -VR - 62; gz <= VR + 62; gz += 3.1) {
+      const x = gx + (rnd() - 0.5) * 2.6, z = gz + (rnd() - 0.5) * 2.6, r = Math.hypot(x, z);
+      if (r < VR + 2.5 || r > VR + 60) continue;
+      if (Math.abs(x) < 3.2 && z < 0) continue;                         // Waldweg nach Norden bleibt frei
+      if (r < VR + 20) tryTree(x, z, false); else farTrees.push([x, z, 0.85 + rnd() * 0.6, rnd()]);
     }
     const dm = new THREE.Object3D(), col = new THREE.Color();
     function inst(geo, m, list, fn) {
@@ -4782,6 +4788,22 @@ const Game = (() => {
       f.color = (t, c, i) => c.setHex([0x2c7f52, 0x35915a, 0x3fa264][k]);
       inst(new THREE.ConeGeometry(1, 1, 7), white, pines, f);
     });
+    }
+    {                                                                   // günstige Fernbäume: Tanne (2 Kegel) und Laubbaum (Kugel) als Instanzen
+      const cone = (r, h, y) => { const g = new THREE.ConeGeometry(r, h, 7); g.deleteAttribute('normal'); g.deleteAttribute('uv'); g.translate(0, y, 0); return g; };
+      const merge = (gs) => { const P = [], I = []; let o = 0; for (const g of gs) { const ng = g.index ? g : g; P.push(...ng.attributes.position.array); I.push(...(ng.index ? Array.from(ng.index.array) : [...Array(ng.attributes.position.count).keys()]).map(i => i + o)); o += ng.attributes.position.count; }
+        const m = new THREE.BufferGeometry(); m.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); m.setIndex(I); m.computeVertexNormals(); return m; };
+      const trunk = new THREE.CylinderGeometry(0.25, 0.35, 2, 5); trunk.translate(0, 1, 0);
+      const pineG = merge([trunk, cone(2.3, 4.2, 3.6), cone(1.7, 3.4, 5.6)]);
+      const blob = new THREE.IcosahedronGeometry(2.5, 0); blob.translate(0, 4.4, 0);
+      const leafG = merge([trunk.clone(), blob]);
+      const fm = new THREE.MeshLambertMaterial({ color: 0xffffff });
+      const fp = farTrees.filter(t => t[3] < 0.55), fl = farTrees.filter(t => t[3] >= 0.55);
+      f = (t, o) => { o.position.set(t[0], groundH(t[0], t[1]) - 0.2, t[1]); o.scale.setScalar(t[2] * 1.15); o.rotation.set(0, t[0] * 3.3, 0); };
+      f.color = (t, c) => c.setRGB(0.10 + t[3] * 0.08, 0.32 + t[3] * 0.12, 0.20);
+      farIM.push(inst(pineG, fm, fp, f));
+      f.color = (t, c) => c.setRGB(0.20 + (t[3] - 0.55) * 0.2, 0.44 + (t[3] - 0.55) * 0.2, 0.18);
+      farIM.push(inst(leafG, fm, fl, f));
     }
     // Echter Laubbusch: dunkler, unregelmäßiger Kern und viele einzelne Blätter, die nach außen zeigen
     function bushGeo(seed, leafN) {
