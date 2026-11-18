@@ -5058,8 +5058,20 @@ const Game = (() => {
   let navN = null;
   function buildNav() {
     const nodes = [], find = (x, z) => { for (let i = 0; i < nodes.length; i++) if (Math.hypot(nodes[i].x - x, nodes[i].z - z) < 1.2) return i; nodes.push({ x, z, nb: new Set() }); return nodes.length - 1; };
-    for (const [x1, z1, x2, z2] of pathSegs) { find(x1, z1); find(x2, z2); }
-    for (const [x1, z1, x2, z2, w] of pathSegs) {
+    // Wege, die durch ein Haus führen, vor dem Haus abschneiden (vom Ende her, das an einen anderen Weg stößt)
+    const boxes = colliders.filter(c => c.box), inBox = (x, z) => boxes.some(c => x > c.x1 - 0.7 && x < c.x2 + 0.7 && z > c.z1 - 0.7 && z < c.z2 + 0.7);
+    const touches = (x, z, self) => pathSegs.some(q => q !== self && (() => { const [a1, b1, a2, b2, w] = q, dx = a2 - a1, dz = b2 - b1, t = Math.max(0, Math.min(1, ((x - a1) * dx + (z - b1) * dz) / (dx * dx + dz * dz))); return Math.hypot(x - a1 - dx * t, z - b1 - dz * t) < w / 2 + 0.6; })());
+    const segs = [];
+    for (const sg of pathSegs) {
+      let [x1, z1, x2, z2, w] = sg;
+      if (!touches(x1, z1, sg) && touches(x2, z2, sg)) { [x1, z1, x2, z2] = [x2, z2, x1, z1]; }   // Start am Weg-Anschluss
+      const L = Math.hypot(x2 - x1, z2 - z1), n = Math.ceil(L / 0.3); let k = 1;
+      for (; k <= n; k++) if (inBox(x1 + (x2 - x1) * k / n, z1 + (z2 - z1) * k / n)) break;
+      if (k <= n) { const t = Math.max(0, (k - 1) / n); x2 = x1 + (x2 - x1) * t; z2 = z1 + (z2 - z1) * t; }
+      if (Math.hypot(x2 - x1, z2 - z1) > 0.5) segs.push([x1, z1, x2, z2, w]);
+    }
+    for (const [x1, z1, x2, z2] of segs) { find(x1, z1); find(x2, z2); }
+    for (const [x1, z1, x2, z2, w] of segs) {
       const dx = x2 - x1, dz = z2 - z1, L2 = dx * dx + dz * dz, on = [];
       nodes.forEach((n, i) => { const t = ((n.x - x1) * dx + (n.z - z1) * dz) / L2; if (t > -0.02 && t < 1.02 && Math.hypot(n.x - x1 - dx * t, n.z - z1 - dz * t) < w / 2 + 0.6) on.push([t, i]); });
       on.sort((p, q) => p[0] - q[0]);
@@ -5108,6 +5120,10 @@ const Game = (() => {
         const n = navN[v.to], dx = n.x - p.x, dz = n.z - p.z, d = Math.hypot(dx, dz);
         if (d < 0.25) { v.prev = v.cur; v.cur = v.to; if (Math.random() < 0.25) v.pause = 2 + Math.random() * 5; }
         else { const st = Math.min(d, v.speed * dt); p.x += dx / d * st; p.z += dz / d * st; moving = true; v.face = Math.atan2(dx, dz); }
+      }
+      for (const c of colliders) if (c.box && p.x > c.x1 - 0.4 && p.x < c.x2 + 0.4 && p.z > c.z1 - 0.4 && p.z < c.z2 + 0.4) {   // nie in ein Haus
+        const o = [p.x - (c.x1 - 0.4), (c.x2 + 0.4) - p.x, p.z - (c.z1 - 0.4), (c.z2 + 0.4) - p.z], m = Math.min(...o);
+        if (m === o[0]) p.x = c.x1 - 0.4; else if (m === o[1]) p.x = c.x2 + 0.4; else if (m === o[2]) p.z = c.z1 - 0.4; else p.z = c.z2 + 0.4;
       }
       p.y = groundH(p.x, p.z);
       if (v.spot) { v.spot.x = p.x; v.spot.z = p.z; }
@@ -5402,6 +5418,6 @@ const Game = (() => {
     if (window.onGameStop) window.onGameStop();
   }
   window.addEventListener('pagehide', () => { if (running) writeSave(); });
-  return { _vill: () => villagers.map(v => [+v.g.position.x.toFixed(1), +v.g.position.z.toFixed(1), v.npc && v.npc.ready]), _nav: () => navN && navN.length, _fly: (i) => { const p = flies[i].g.position; return [p.x, p.z]; }, setQuality, start, stop, hasSave: () => !!readSave(), _healer: () => [healer.g.position.x, healer.g.position.z], click: () => SFX.click(), _tp: (x, z, d) => { P.x = x; P.z = z; if (d !== undefined) P.dir = d; if (d !== undefined && d > 50) cam.yaw = d - 100; if (camera) camera.position.set(x + Math.sin(cam.yaw) * cam.d, groundH(x, z) + 1.6 + Math.sin(cam.pitch) * cam.d, z + Math.cos(cam.yaw) * cam.d); }, _cam: (yaw, h, pitch) => { cam.yaw = yaw; if (h) cam.pitch = Math.atan2(h - 1.6, cam.d); if (pitch !== undefined) cam.pitch = pitch; }, _q: () => Q, _skip: () => { if (dialogOpen) { talkIdx = talkLines.length - 1; nextLine(); } }, _hero: () => hero, _sim: (n, d) => { for (let i = 0; i < n; i++) { time += d; update(d); } }, _state: () => ({ x: P.x, z: P.z, near: nearSpot && nearSpot.title, rot, GW, GH, colliders: colliders.length }) };
+  return { _vill: () => villagers.map(v => [+v.g.position.x.toFixed(1), +v.g.position.z.toFixed(1), v.npc && v.npc.ready]), _nav: () => navN, _col: () => colliders.filter(c => c.box), _segs: () => pathSegs, _fly: (i) => { const p = flies[i].g.position; return [p.x, p.z]; }, setQuality, start, stop, hasSave: () => !!readSave(), _healer: () => [healer.g.position.x, healer.g.position.z], click: () => SFX.click(), _tp: (x, z, d) => { P.x = x; P.z = z; if (d !== undefined) P.dir = d; if (d !== undefined && d > 50) cam.yaw = d - 100; if (camera) camera.position.set(x + Math.sin(cam.yaw) * cam.d, groundH(x, z) + 1.6 + Math.sin(cam.pitch) * cam.d, z + Math.cos(cam.yaw) * cam.d); }, _cam: (yaw, h, pitch) => { cam.yaw = yaw; if (h) cam.pitch = Math.atan2(h - 1.6, cam.d); if (pitch !== undefined) cam.pitch = pitch; }, _q: () => Q, _skip: () => { if (dialogOpen) { talkIdx = talkLines.length - 1; nextLine(); } }, _hero: () => hero, _sim: (n, d) => { for (let i = 0; i < n; i++) { time += d; update(d); } }, _state: () => ({ x: P.x, z: P.z, near: nearSpot && nearSpot.title, rot, GW, GH, colliders: colliders.length }) };
 })();
 

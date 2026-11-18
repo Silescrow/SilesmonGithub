@@ -215,7 +215,7 @@
         <button id="btnContinue" type="button" disabled>Weiter</button>
         <button id="btnOpt" type="button">Optionen</button>
       </nav>
-      <div class="version">V1.27</div>
+      <div class="version">V1.28</div>
     </div>
   </main>
 
@@ -403,11 +403,11 @@
 <script>
   // Neue Version auf dem Server? Dann einmal frisch laden (der Link bleibt immer gleich)
   fetch('version.txt?t=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.text() : '').then(v => {
-    v = v.trim(); if (v && v !== 'V1.27' && sessionStorage.getItem('silesmon_reload') !== v) { sessionStorage.setItem('silesmon_reload', v); location.reload(); }
+    v = v.trim(); if (v && v !== 'V1.28' && sessionStorage.getItem('silesmon_reload') !== v) { sessionStorage.setItem('silesmon_reload', v); location.reload(); }
   }).catch(() => {});
   // Spieldaten im Hintergrund nachladen, damit das Hauptmenü sofort erscheint
   window.addEventListener('load', () => {
-    const s = document.createElement('script'); s.src = 'silesmon-data.js?v=V1.27';
+    const s = document.createElement('script'); s.src = 'silesmon-data.js?v=V1.28';
     s.onload = () => { if (window.pendingStart !== undefined) startGame(window.pendingStart); };
     s.onerror = () => toast('Spiel konnte nicht geladen werden. Bitte neu laden.');
     document.body.appendChild(s);
