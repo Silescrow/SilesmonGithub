@@ -4019,16 +4019,17 @@ const Game = (() => {
   // Krankenstation wie früher: großes rotes Kreuz über der Tür und eine weiße Fahne mit rotem Kreuz
   function crossTex(flag) {
     const c = document.createElement('canvas'); c.width = flag ? 384 : 256; c.height = 256; const g = c.getContext('2d');
-    if (flag) { g.fillStyle = '#fbfaf5'; g.fillRect(0, 0, 384, 256); g.fillStyle = '#d61f2c'; g.fillRect(162, 40, 60, 176); g.fillRect(104, 98, 176, 60); }
+    if (flag) { g.fillStyle = '#fbf6e8'; g.fillRect(0, 0, 384, 256); g.fillStyle = '#d61f2c'; g.fillRect(162, 40, 60, 176); g.fillRect(104, 98, 176, 60); }
     else { g.fillStyle = '#fbfaf5'; g.strokeStyle = '#8a1a24'; g.lineWidth = 12; g.beginPath(); g.arc(128, 128, 120, 0, 6.3); g.fill(); g.stroke();
       g.fillStyle = '#d61f2c'; g.fillRect(98, 34, 60, 188); g.fillRect(34, 98, 188, 60); }
     const t = new THREE.CanvasTexture(c); t.anisotropy = 4; return t;
   }
   const flags = [];
   function redCross(g, doorX, zf, poleX, H) {
-    const plate = new THREE.Mesh(new THREE.CircleGeometry(0.85, 32), new THREE.MeshBasicMaterial({ map: crossTex(false), transparent: true }));
+    const ring = new THREE.Mesh(new THREE.CircleGeometry(0.72, 32), new THREE.MeshBasicMaterial({ color: 0x7a4a24 })); ring.position.set(doorX, H * 0.36, zf + 0.11); g.add(ring);
+    const plate = new THREE.Mesh(new THREE.CircleGeometry(0.62, 32), new THREE.MeshBasicMaterial({ map: crossTex(false), transparent: true }));
     plate.position.set(doorX, H * 0.36, zf + 0.12); g.add(plate); plate.userData.cross = true;
-    M(new THREE.CylinderGeometry(0.07, 0.09, 6.2, 8), 0xe8e4da, poleX - 0.6, 3.1, zf + 2.2, g);       // Fahnenmast
+    M(new THREE.CylinderGeometry(0.07, 0.09, 6.2, 8), 0x7a4a24, poleX - 0.6, 3.1, zf + 2.2, g);       // Fahnenmast
     M(new THREE.SphereGeometry(0.14, 10, 8), 0xf2c94c, poleX - 0.6, 6.25, zf + 2.2, g);
     const fg = new THREE.PlaneGeometry(1.8, 1.2, 12, 1); fg.translate(0.9, 0, 0);
     const flag = new THREE.Mesh(fg, new THREE.MeshBasicMaterial({ map: crossTex(true), side: THREE.DoubleSide }));
@@ -4527,8 +4528,8 @@ const Game = (() => {
     sunflowers.push([fx1 + 0.8, o.z + zf + 1.2], [fx1 + 1.5, o.z + zf + 2.0], [fx2 - 0.9, o.z + zf + 1.4]);
     roses.push([fx2 - 1.3, o.z + zf + 2.6], [fx1 + 1.2, o.z + zf + 2.9]);
     if (o.variant === 'weiss' && o.sign && false) { const hs = label('', 1.5, 1.5, '#ffffff', '#000', 'bigheart'); hs.position.set(gapX - o.x - 2.4, 1.9, zf + 3.64); g.add(hs); M(new THREE.CylinderGeometry(0.08, 0.08, 1.3, 6), WOOD2, gapX - o.x - 2.4, 0.6, zf + 3.6, g); }
-    if (o.sign) { const sw = o.signW > 2.5 ? 3.2 : 2.3; fairySign(o.sign, gapX - o.x + (o.variant === 'krank' ? 2.6 : 2.2) + sw / 2 - 1.1, zf + 3.85, g, sw, o.variant === 'krank' ? 'cross' : null);
-      if (o.variant === 'krank') redCross(g, gapX - o.x, zf, fx1 - o.x, o.H); }
+    if (o.sign) { const sw = o.signW > 2.5 ? 3.2 : 2.3; fairySign(o.sign, gapX - o.x + (o.krank ? 2.6 : 2.2) + sw / 2 - 1.1, zf + 3.85, g, sw, o.krank ? 'cross' : null);
+      if (o.krank) redCross(g, gapX - o.x, zf, fx1 - o.x, o.H); }
     colliders.push({ box: true, x1: o.x - fw / 2, x2: o.x + fw / 2, z1: o.z - fd / 2, z2: o.z + fd / 2 });
     spots.push({ x: gapX, z: o.z + zf + 1.2, r: 1.8, title: o.title, text: o.text });
     houses.push(Object.assign({}, o, { w: fw + 3.6, d: fd + 7.6, z: o.z + 1.9, realW: fw, realD: fd, realZ: o.z }));
@@ -4659,7 +4660,7 @@ const Game = (() => {
     const HM = { model: 'haus1', rot: HOUSE1_ROT, doorX: HOUSE1_DOORX };
     const H = (o) => house(Object.assign(o, HM));
     // Reihe hinter dem Dorfplatz
-    H({ x: -12, z: -16, H: 9.6, variant: 'krank', sign: 'Krankenstation', signW: 3.4, title: 'Krankenstation', text: 'Hier pflegt die Heilerin verletzte Tiere gesund.' });
+    H({ x: -12, z: -16, H: 9.6, variant: 'weiss', krank: true, sign: 'Krankenstation', signW: 3.4, title: 'Krankenstation', text: 'Hier pflegt die Heilerin verletzte Tiere gesund.' });
     H({ x: 12, z: -16, H: 8.4, variant: 'gelb', title: 'Bäckerhaus', text: 'Die Tür steht offen. Drinnen duftet es nach frischem Brot.' });
     H({ x: -30, z: -16, H: 8.2, variant: 'gruen', title: 'Haus der Försterin', text: 'An der Tür hängt ein Zettel: „Bin im Wald, Bäume zählen."' });
     H({ x: 30, z: -16, H: 8.6, title: 'Schmiede', text: 'Drinnen klirrt es. Der Schmied hat gerade keine Zeit.' });
@@ -4744,11 +4745,11 @@ const Game = (() => {
     for (const [x, z] of [[-44, -6], [44, -8], [-44, 22], [44, 20], [-6, -45], [8, -48], [-40, -44], [40, -44], [-34, 40], [34, 40], [-7, 15], [7, 17], [-21, -48], [22, -48]]) tryTree(x, z, true);
     // Extrem dichter Wald direkt hinter dem Zaun: vorne echte Baummodelle, dahinter günstige Bäume (sehen von weitem gleich aus)
     const farTrees = [];
-    for (let gx = -VR - 62; gx <= VR + 62; gx += 3.1) for (let gz = -VR - 62; gz <= VR + 62; gz += 3.1) {
-      const x = gx + (rnd() - 0.5) * 2.6, z = gz + (rnd() - 0.5) * 2.6, r = Math.hypot(x, z);
+    for (let gx = -VR - 62; gx <= VR + 62; gx += 2.5) for (let gz = -VR - 62; gz <= VR + 62; gz += 2.5) {
+      const x = gx + (rnd() - 0.5) * 2.2, z = gz + (rnd() - 0.5) * 2.2, r = Math.hypot(x, z);
       if (r < VR + 2.5 || r > VR + 60) continue;
       if (Math.abs(x) < 3.2 && z < 0) continue;                         // Waldweg nach Norden bleibt frei
-      if (r < VR + 20) tryTree(x, z, false); else farTrees.push([x, z, 0.85 + rnd() * 0.6, rnd()]);
+      if (r < VR + 24) tryTree(x, z, false); else farTrees.push([x, z, 0.85 + rnd() * 0.6, rnd()]);
     }
     const dm = new THREE.Object3D(), col = new THREE.Color();
     function inst(geo, m, list, fn) {
@@ -4831,7 +4832,7 @@ const Game = (() => {
     const bushGeos = [bushGeo(11, 260), bushGeo(29, 260), bushGeo(47, 260)];
     // Büsche im Süden und Steine
     const bushes = [], rocks = [];
-    for (let i = 0; i < 90; i++) { const a = rnd() * 6.283;  if (Math.abs(Math.cos(a)) < 0.1 && Math.sin(a) < 0) continue; const _a = a, r = VR + 1.5 + rnd() * 9; bushes.push([Math.cos(a) * r, Math.sin(a) * r, 0.6 + rnd() * 0.6]); }
+    for (let i = 0; i < 260; i++) { const a = rnd() * 6.283;  if (Math.abs(Math.cos(a)) < 0.1 && Math.sin(a) < 0) continue; const _a = a, r = VR + 1.5 + rnd() * 18; bushes.push([Math.cos(a) * r, Math.sin(a) * r, 0.6 + rnd() * 0.6]); }
     f = (t, o) => { o.position.set(t[0], groundH(t[0], t[1]) + 0.45 * t[2], t[1]); o.scale.set(1.3 * t[2], 0.9 * t[2], 1.3 * t[2]); o.rotation.set(0, t[0], 0); };
     f = (t, o) => { o.position.set(t[0], groundH(t[0], t[1]) + 0.35 * t[2], t[1]); o.scale.set(1.25 * t[2], 1.0 * t[2], 1.25 * t[2]); o.rotation.set(0, t[0] * 2.3, 0); };
     bushGeos.forEach((bg, k) => inst(bg, bushMat, bushes.filter((t, i) => i % 3 === k), f));
