@@ -130,6 +130,39 @@
   #gDialog #gOK { position:static; display:block; margin:6px 0 0 auto; padding:6px 16px 4px !important; border-radius:12px; font-size:17px; background:linear-gradient(#5fe6ff,#12a4f2) !important; color:#fff; text-shadow:0 2px 0 var(--ink); }
 
   #gSet { right:62px; top:10px; width:42px; height:42px; border-radius:12px; display:grid; place-items:center; font-size:22px; }
+
+  #gTeam { left:118px; top:10px; height:42px; padding:0 14px !important; border-radius:14px !important; font-size:17px; display:none !important; }
+  #gTeam.on { display:block !important; }
+  #gFly { right:118px; bottom:118px; width:62px; height:62px; border-radius:50% !important; font-size:28px; display:grid; place-items:center; background:#fff7d6 !important; }
+  #gFly.on { background:#ffd93b !important; }
+  #gFly small { position:absolute; bottom:-20px; left:50%; translate:-50% 0; font-family:"SilesUI",sans-serif; font-size:11px; color:#fff; text-shadow:0 1px 2px #000; white-space:nowrap; text-transform:none; }
+  #bt { position:absolute; inset:0; display:none; z-index:20; pointer-events:none; }
+  #bt.on { display:block; }
+  #game.on:has(#bt.on) > #gTalk, #game.on:has(#bt.on) > #gA, #game.on:has(#bt.on) > #gB, #game.on:has(#bt.on) > #gGoal, #game.on:has(#bt.on) > #gTeam, #game.on:has(#bt.on) > #gFly, #game.on:has(#bt.on) > #joyHint, #game.on:has(#bt.on) > #camHint { display:none !important; }
+  .btCard { position:absolute; width:min(34%,280px); background:#fffaf0; border:4px solid var(--ink); border-radius:18px; padding:8px 12px 6px; box-shadow:0 5px 0 var(--ink); font-family:"SilesUI",system-ui,sans-serif; color:var(--ink); pointer-events:auto; }
+  .btCard b { font-size:19px; font-weight:900; } .btCard i { font-style:normal; font-size:12px; opacity:.75; margin-left:4px; }
+  .btCard small { font-size:12px; font-weight:800; }
+  .hp { height:12px; background:#d9d2c2; border:2px solid var(--ink); border-radius:8px; overflow:hidden; margin:4px 0 2px; }
+  .hp span { display:block; height:100%; background:linear-gradient(#7ee05a,#3fae2e); transition:width .4s; }
+  #btEn { right:14px; top:62px; } #btMe { left:14px; top:62px; }
+  #btBox { position:absolute; left:50%; bottom:10px; translate:-50% 0; width:min(94%,760px); background:#fffaf0; border:4px solid var(--ink); border-radius:22px; padding:8px 10px 10px; box-shadow:0 6px 0 var(--ink); pointer-events:auto; font-family:"SilesUI",system-ui,sans-serif; color:var(--ink); }
+  #btMsg { margin:2px 6px 8px; font-size:17px; font-weight:800; min-height:22px; }
+  #btBtns { display:grid; grid-template-columns:repeat(6,1fr); gap:6px; }
+  #btBtns button, #btSwapList button, #tm button { position:static !important; font:900 15px "SilesUI",system-ui,sans-serif; padding:8px 4px 6px !important; border:3px solid var(--ink); border-radius:14px !important; background:#fff; color:var(--ink); box-shadow:0 3px 0 var(--ink); display:flex; flex-direction:column; align-items:center; line-height:1.15; }
+  #btBtns button small { font-size:10px; font-weight:700; opacity:.7; text-transform:none; }
+  #btBtns button:disabled, #tm button:disabled { opacity:.4; }
+  #btAtk { background:#ffd9d0 !important; } #btSpec { background:#ffe98a !important; } #btDef { background:#d4ecff !important; } #btPod { background:#e4d4ff !important; }
+  #btSwapList { display:none; gap:6px; margin-top:6px; flex-wrap:wrap; } #btSwapList.on { display:flex; }
+  #tm { position:absolute; inset:0; z-index:25; display:none; place-items:center; background:rgba(10,20,50,.5); }
+  #tm.on { display:grid; }
+  .tmBox { width:min(92%,640px); max-height:88%; overflow:auto; background:#fffaf0; border:4px solid var(--ink); border-radius:22px; padding:12px; box-shadow:0 6px 0 var(--ink); font-family:"SilesUI",system-ui,sans-serif; color:var(--ink); text-align:center; }
+  #tmTitle { display:block; font-size:18px; margin-bottom:8px; }
+  #tmList { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; text-align:left; }
+  .tm { border:3px solid var(--ink); border-radius:14px; padding:6px 8px; background:#fff; display:grid; grid-template-columns:1fr auto; column-gap:8px; align-items:center; }
+  .tm.act { background:#fff3b8; } .tm b { font-size:16px; } .tm i { font-style:normal; font-size:11px; opacity:.7; } .tm small { font-size:11px; }
+  .tm .hp, .tm small, .tm i { grid-column:1; } .tm button { grid-column:2; grid-row:1 / span 4; }
+  .tmKeep { grid-column:1 / -1; justify-self:center; }
+  #tmClose { margin:10px auto 0; background:#4fc3f7 !important; color:#fff !important; padding:8px 30px !important; }
   .bottom { width:min(460px,100%); display:flex; flex-direction:column; align-items:center; gap:10px; }
   nav { width:100%; display:grid; grid-template-columns:1fr 1fr; gap:11px 12px; }
   button { font-family:"SilesLogo","SilesUI",sans-serif; text-transform:uppercase; font-size:clamp(20px,6vw,28px); letter-spacing:.3px; color:var(--ink); min-height:clamp(58px,17vw,78px); padding:0 6px;
@@ -215,7 +248,7 @@
         <button id="btnContinue" type="button" disabled>Weiter</button>
         <button id="btnOpt" type="button">Optionen</button>
       </nav>
-      <div class="version">V1.34</div>
+      <div class="version">V1.35</div>
     </div>
   </main>
 
@@ -236,6 +269,24 @@
     <button id="gTalk" type="button"></button>
     <button id="gB" type="button">B<small>Rennen</small></button>
     <button id="gA" type="button">A<small>Ansehen</small></button>
+    <button id="gTeam" type="button">🐾 Team</button>
+    <button id="gFly" type="button" style="display:none">🦅<small>Fliegen</small></button>
+    <div id="bt">
+      <div id="btEn" class="btCard"></div>
+      <div id="btMe" class="btCard"></div>
+      <div id="btBox"><p id="btMsg"></p>
+        <div id="btBtns">
+          <button id="btAtk" type="button">⚔️ Angriff<small>normaler Angriff</small></button>
+          <button id="btSpec" type="button">✨ Spezial</button>
+          <button id="btDef" type="button">🛡️ Abwehr<small>halber Schaden</small></button>
+          <button id="btSwap" type="button">🔄 Tauschen<small>anderes Tier</small></button>
+          <button id="btPod" type="button">🟣 Silpod</button>
+          <button id="btRun" type="button">🏃 Flucht<small>zurückziehen</small></button>
+        </div>
+        <div id="btSwapList"></div>
+      </div>
+    </div>
+    <div id="tm"><div class="tmBox"><b id="tmTitle"></b><div id="tmList"></div><button id="tmClose" type="button">Fertig</button></div></div>
     <div id="gDialog"><b id="gDT"></b><p id="gDP"></p><button id="gOK" type="button">Weiter ▸</button></div>
   </div>
 
@@ -403,11 +454,11 @@
 <script>
   // Neue Version auf dem Server? Dann einmal frisch laden (der Link bleibt immer gleich)
   fetch('version.txt?t=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.text() : '').then(v => {
-    v = v.trim(); if (v && v !== 'V1.34' && sessionStorage.getItem('silesmon_reload') !== v) { sessionStorage.setItem('silesmon_reload', v); location.reload(); }
+    v = v.trim(); if (v && v !== 'V1.35' && sessionStorage.getItem('silesmon_reload') !== v) { sessionStorage.setItem('silesmon_reload', v); location.reload(); }
   }).catch(() => {});
   // Spieldaten im Hintergrund nachladen, damit das Hauptmenü sofort erscheint
   window.addEventListener('load', () => {
-    const s = document.createElement('script'); s.src = 'silesmon-data.js?v=V1.34';
+    const s = document.createElement('script'); s.src = 'silesmon-data.js?v=V1.35';
     s.onload = () => { if (window.pendingStart !== undefined) startGame(window.pendingStart); };
     s.onerror = () => toast('Spiel konnte nicht geladen werden. Bitte neu laden.');
     document.body.appendChild(s);

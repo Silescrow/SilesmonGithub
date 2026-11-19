@@ -3906,7 +3906,7 @@ const Game = (() => {
   const HOME = { x: 0, z: 0, dir: Math.PI };
   const SAVE_KEY = 'silesmon_save_v1';
   function readSave() { try { const s = JSON.parse(localStorage.getItem(SAVE_KEY)); return s && s.v === 1 ? s : null; } catch (e) { return null; } }
-  function writeSave() { try { localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 1, step: Q.step, x: +P.x.toFixed(2), z: +P.z.toFixed(2), dir: +P.dir.toFixed(2), t: Date.now() })); } catch (e) {} }
+  function writeSave() { try { localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 1, adv: advSave(), step: Q.step, x: +P.x.toFixed(2), z: +P.z.toFixed(2), dir: +P.dir.toFixed(2), t: Date.now() })); } catch (e) {} }
   function clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} }
   let saveT = 0;
 
@@ -3964,7 +3964,10 @@ const Game = (() => {
   const _cWarm = new THREE.Color(0.55, 0.66, 0.27), _cCool = new THREE.Color(0.18, 0.46, 0.30);
   function groundH(x, z) {
     const r = Math.hypot(x, z), t = Math.min(1, Math.max(0, (r - (VR + 2)) / 45)), s = t * t * (3 - 2 * t);
-    return s * (7 + 9 * noise(x * 0.04 + 7, z * 0.04 + 3));
+    let h = s * (7 + 9 * noise(x * 0.04 + 7, z * 0.04 + 3));
+    const df = Math.hypot(x - 0, z + 92), fl = 1 - Math.min(1, Math.max(0, (df - 26) / 14)), co = (Math.abs(x) < 6 && z < -50 && z > -70) ? 1 - Math.max(0, Math.abs(x) - 3) / 3 : 0;
+    const k = Math.max(fl, co); if (k > 0) h = h * (1 - k) + k * (0.6 + 1.2 * noise(x * 0.08 + 2, z * 0.08));   // Waldgebiet fast eben
+    return h;
   }
   const mats = {};
   function mat(color) {
@@ -4724,7 +4727,7 @@ const Game = (() => {
     for (const s of [-1, 1]) { const b = M(new THREE.CylinderGeometry(0.13, 0.13, 5.2, 6), 0xb8793f, 0, 0.95, -R + 0.3); b.rotation.z = Math.PI / 2 + s * 0.22; gateBars.push(b); }
     gateSpot = { x: 0, z: -R + 2.2, r: 3.2, title: 'Weg in den Wald', text: () => Q.step < 1
       ? ['Der Sturm hat Äste über den Weg geworfen.', 'Ich sollte erst im Dorf nach dem Rechten sehen.']
-      : ['Hier geht es in den Wald.', '(Der Wald wird gerade gebaut – er kommt im nächsten Update.)'] };
+      : ['Hier geht es in den Wald.', 'Folge dem Weg über die Brücke – dahinter liegt eine Lichtung.'] };
     spots.push(gateSpot);
 
     // Startplatz: vor dem Gartentor von Home
@@ -4740,7 +4743,7 @@ const Game = (() => {
       if (inside && (onPath(x, z) || Math.hypot(x, z) < 9.5)) return;
       for (const h of houses) if (Math.abs(x - h.x) < h.w / 2 + 2.2 && Math.abs(z - h.z) < h.d / 2 + 2.6) return;
       (rnd() < 0.6 ? leafy : pines).push([x, z, (inside ? 0.8 : 1.15) + rnd() * 0.6]);
-      if (Math.hypot(x, z) < VILLAGE_R + 2) colliders.push({ x, z, r: 0.55 });
+      if (Math.hypot(x, z) < VILLAGE_R + 2 || inAdv(x, z)) colliders.push({ x, z, r: 0.6 });
     }
     for (const [x, z] of [[-44, -6], [44, -8], [-44, 22], [44, 20], [-6, -45], [8, -48], [-40, -44], [40, -44], [-34, 40], [34, 40], [-7, 15], [7, 17], [-21, -48], [22, -48]]) tryTree(x, z, true);
     // Extrem dichter Wald direkt hinter dem Zaun: vorne echte Baummodelle, dahinter günstige Bäume (sehen von weitem gleich aus)
@@ -4748,9 +4751,11 @@ const Game = (() => {
     for (let gx = -VR - 62; gx <= VR + 62; gx += 5.4) for (let gz = -VR - 62; gz <= VR + 62; gz += 5.4) {
       const x = gx + (rnd() - 0.5) * 3.2, z = gz + (rnd() - 0.5) * 3.2, r = Math.hypot(x, z);
       if (r < VR + 2.5 || r > VR + 20) continue;
-      if (Math.abs(x) < 3.2 && z < 0) continue;                         // Waldweg nach Norden bleibt frei
+      if (Math.abs(x) < 4 && z < 0) continue;
+      if (inForest(x, z) && (forestPathDist(x, z) < 4.5 || Math.hypot(x - CLEAR.x, z - CLEAR.z) < 10)) continue;                         // Waldweg nach Norden bleibt frei
       tryTree(x, z, false);           // nur echte Baummodelle aus deinen GLB-Dateien
     }
+    advTrees(tryTree);
     const dm = new THREE.Object3D(), col = new THREE.Color();
     function inst(geo, m, list, fn) {
       const im = new THREE.InstancedMesh(geo, m, list.length);
@@ -4833,9 +4838,10 @@ const Game = (() => {
     // Büsche im Süden und Steine
     const bushes = [], rocks = [];
     for (let i = 0; i < 90; i++) { const a = rnd() * 6.283;  if (Math.abs(Math.cos(a)) < 0.1 && Math.sin(a) < 0) continue; const _a = a, r = VR + 1.5 + rnd() * 18; bushes.push([Math.cos(a) * r, Math.sin(a) * r, 0.6 + rnd() * 0.6]); }
+    advBushes(bushes); bushPts = bushes;
     f = (t, o) => { o.position.set(t[0], groundH(t[0], t[1]) + 0.45 * t[2], t[1]); o.scale.set(1.3 * t[2], 0.9 * t[2], 1.3 * t[2]); o.rotation.set(0, t[0], 0); };
     f = (t, o) => { o.position.set(t[0], groundH(t[0], t[1]) + 0.35 * t[2], t[1]); o.scale.set(1.25 * t[2], 1.0 * t[2], 1.25 * t[2]); o.rotation.set(0, t[0] * 2.3, 0); };
-    bushGeos.forEach((bg, k) => inst(bg, bushMat, bushes.filter((t, i) => i % 3 === k), f));
+    bushGeos.forEach((bg, k) => bushIMs.push(inst(bg, bushMat, bushes.filter((t, i) => i % 3 === k), f)));
     for (let i = 0; i < 50; i++) { const a = rnd() * 6.283, r = 10 + rnd() * (VR - 12), x = Math.cos(a) * r, z = Math.sin(a) * r; if (!onPath(x, z)) rocks.push([x, z, 0.25 + rnd() * 0.4]); }
     f = (t, o) => { o.position.set(t[0], groundH(t[0], t[1]) + 0.12 * t[2], t[1]); o.scale.set(t[2] * 1.4, t[2], t[2] * 1.1); o.rotation.set(t[0], t[1], 0); };
     inst(new THREE.IcosahedronGeometry(1, 0), mat(0xa7a5b4), rocks, f);
@@ -5197,11 +5203,12 @@ const Game = (() => {
     const stem = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.6, 0.32), am); stem.position.y = 0.65; stem.renderOrder = 6; goalArrow.add(stem);
     const st = houses.find(h => h.title === 'Krankenstation'); healer.g.position.set(st.gateX - 2.7, 0, st.gateZ + 1.2); healer.dir = 0;
     healer.fixed = true;
-    spots.push({ x: healer.g.position.x, z: healer.g.position.z, r: 2.8, talk: true, title: 'Heilerin', text: [
+    const hText0 = [
       'Hallo Siles! Schön, dass du vorbeischaust.',
       'Der Sturm letzte Nacht war schlimm. Im Wald sind bestimmt Tiere verletzt worden.',
-      'Ich habe die Absperrung am Waldtor im Norden schon weggeräumt.', 'Wenn du ein verletztes Tier findest, bring es zu mir in die Krankenstation. Ich kümmere mich darum.'],
-      onEnd: () => { if (Q.step === 0) setStep(1); } });
+      'Ich habe die Absperrung am Waldtor im Norden schon weggeräumt.', 'Wenn du ein verletztes Tier findest, bring es zu mir in die Krankenstation. Ich kümmere mich darum.'];
+    spots.push({ x: healer.g.position.x, z: healer.g.position.z, r: 2.8, talk: true, title: 'Heilerin', text: () => healerLines() || hText0,
+      onEnd: () => { if (Q.step === 0) setStep(1); else healerEnd(); } });
     if (healer.rig) addVillager(healer.g, null, 0, spots[spots.length - 1], healer.g.position.x, healer.g.position.z).npc = healer.rig;
     // Sprechblase über ihrem Kopf
     const bc = document.createElement('canvas'); bc.width = 128; bc.height = 112; const bx = bc.getContext('2d');
@@ -5221,7 +5228,7 @@ const Game = (() => {
     grad.minFilter = grad.magFilter = THREE.NearestFilter; grad.needsUpdate = true;
     scene = new THREE.Scene();
     camera = new THREE.PerspectiveCamera(48, 16 / 9, 0.3, 2200);
-    buildSkyAndLight(); buildGround(); buildVillage(); buildNature(); buildPlayer(); buildLife();
+    buildSkyAndLight(); buildGround(); buildVillage(); buildNature(); buildAdventure(); buildPlayer(); buildLife();
     bindInput(); inited = true; setQuality(window.SILES_Q === undefined ? 1 : window.SILES_Q);
   }
   function layout() {
@@ -5273,7 +5280,7 @@ const Game = (() => {
     for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(ev, () => { input.run = false; b.classList.remove('held'); });
     $('gOK').addEventListener('click', () => { SFX.click(); nextLine(); });
     $('gTalk').addEventListener('click', () => { SFX.click(); actionA(); });
-    $('gMenu').addEventListener('click', stop);
+    $('gMenu').addEventListener('click', stop); bindAdv();
     // Vollbild-Knopf oben rechts
     $('gSet').addEventListener('click', () => { SFX.click(); if (window.openSettings) window.openSettings(); });
     $('gFull').addEventListener('click', () => {
@@ -5295,6 +5302,7 @@ const Game = (() => {
   function actionA() {
     if (dialogOpen) return nextLine();
     if (!nearSpot) return;
+    if (nearSpot.wild) return wildAction(nearSpot.wild);
     const t = typeof nearSpot.text === 'function' ? nearSpot.text() : nearSpot.text;
     openDialog(nearSpot.title, t, nearSpot.onEnd);
   }
@@ -5302,15 +5310,13 @@ const Game = (() => {
   const GOALS = ['Finde die Heilerin im Dorf und sprich mit ihr', 'Geh zum Waldtor im Norden', 'Der Wald kommt im nächsten Update'];
   let goalArrow = null;
   function setStep(s) {
-    Q.step = s; $('gGoalT').textContent = GOALS[s];
+    Q.step = s; $('gGoalT').textContent = goalText(); if (typeof advHud === 'function' && inited) advHud();
     $('gGoal').classList.remove('new'); void $('gGoal').offsetWidth; $('gGoal').classList.add('new');
     for (const b of gateBars) b.visible = s < 1;                   // Absperrung am Tor weg, sobald die Heilerin es sagt
     writeSave();
   }
   function goalTarget() {
-    if (Q.step === 0) return healer.g.position.clone().setY(healer.h + 1.45);
-    if (Q.step === 1) return new THREE.Vector3(0, 5.4, -VR);
-    return null;
+    return goalTarget2();
   }
   function showLine() {
     $('gDP').textContent = talkLines[talkIdx];
@@ -5327,6 +5333,8 @@ const Game = (() => {
     if (keys['q']) cam.yaw += dt * 1.8; if (keys['e']) cam.yaw -= dt * 1.8; if (keys['r']) cam.pitch = Math.max(-0.5, cam.pitch - dt); if (keys['f']) cam.pitch = Math.min(1.15, cam.pitch + dt);
     let len = Math.hypot(ix, iy); if (len > 1) { ix /= len; iy /= len; len = 1; }
     if (dialogOpen || len < 0.12) { ix = iy = 0; len = 0; }
+    if (BT.on) { battleFrame(dt); return; }
+    if (FLY.on) { flyFrame(dt, ix, iy, len); return; }
     // Joystick-Richtung in Weltrichtung umrechnen (abhängig von der Kameradrehung)
     const cs = Math.cos(cam.yaw), sn = Math.sin(cam.yaw), wx = cs * ix + sn * iy, wz = -sn * ix + cs * iy;
     const run = input.run || keys['shift'], speed = (run ? 8.6 : 5.0) * len;
@@ -5344,7 +5352,7 @@ const Game = (() => {
           if (d < min && d > 0.0001) { nx = c.x + dx / d * min; nz = c.z + dz / d * min; }
         }
       }
-      const rr = Math.hypot(nx, nz); if (rr > VILLAGE_R) { nx *= VILLAGE_R / rr; nz *= VILLAGE_R / rr; }   // Zaun
+      if (!canWalk(nx, nz)) { if (canWalk(nx, P.z)) nz = P.z; else if (canWalk(P.x, nz)) nx = P.x; else { nx = P.x; nz = P.z; } }   // Zaun, Wald, Bach
       P.x = nx; P.z = nz; P.dir = Math.atan2(wx, wz);
     }
     P.move += ((len > 0 ? (run ? 1.35 : 1) * len : 0) - P.move) * Math.min(1, dt * 10);
@@ -5366,6 +5374,7 @@ const Game = (() => {
       for (let i = 0; i < p.count; i++) { const x = b[i * 3]; p.array[i * 3 + 2] = Math.sin(x * 2.4 - time * 5) * 0.14 * x; p.array[i * 3 + 1] = b[i * 3 + 1] - x * x * 0.03; }
       p.needsUpdate = true; }
     updateVillagers(dt);
+    advUpdate(dt, y);
     if (hero) {                                                 // echtes Modell: Stehen, Gehen, Rennen weich überblenden
       let da = P.dir - hero.root.rotation.y; while (da > Math.PI) da -= 6.283; while (da < -Math.PI) da += 6.283;
       hero.root.rotation.y += da * Math.min(1, dt * 14);
@@ -5419,7 +5428,7 @@ const Game = (() => {
       nearSpot = best; $('gA').classList.toggle('ready', !!best);
       if (dialogOpen && !best) closeDialog();
       $('gTalk').classList.toggle('on', !!best && !dialogOpen);
-      if (best) $('gTalk').innerHTML = (best.talk ? '💬 Sprechen' : '👀 Ansehen') + '<small>' + best.title + '</small>';
+      if (best) $('gTalk').innerHTML = (best.wild ? (best.wild.baby ? '🐾 Begrüßen' : '⚔️ Kämpfen') : best.talk ? '💬 Sprechen' : '👀 Ansehen') + '<small>' + best.title + '</small>';
     }
     const gt = goalTarget();
     if (goalArrow) { goalArrow.visible = !!gt && !dialogOpen; if (gt) { goalArrow.position.set(gt.x, gt.y + Math.sin(time * 4) * 0.18, gt.z); goalArrow.rotation.y = time * 2; } }
@@ -5443,8 +5452,8 @@ const Game = (() => {
     if (!window.THREE) return false;
     try { if (!inited) init(); } catch (err) { console.error(err); return false; }
     const sv = cont ? readSave() : null;
-    if (sv) { P.x = sv.x; P.z = sv.z; P.dir = sv.dir; Q.introDone = true; $('gGoal').classList.add('on'); setStep(sv.step); }
-    else { clearSave(); P.x = HOME.x; P.z = HOME.z; P.dir = HOME.dir; Q.step = 0; Q.introDone = false; for (const b of gateBars) b.visible = true; cam.yaw = 0; cam.pitch = 0.36; }
+    if (sv) { P.x = sv.x; P.z = sv.z; P.dir = sv.dir; Q.introDone = true; $('gGoal').classList.add('on'); Q.step = sv.step; advLoad(sv.adv); setStep(sv.step); }
+    else { clearSave(); P.x = HOME.x; P.z = HOME.z; P.dir = HOME.dir; Q.step = 0; Q.introDone = false; advLoad(null); for (const b of gateBars) b.visible = true; cam.yaw = 0; cam.pitch = 0.36; }
     document.body.classList.add('inGame'); $('game').classList.add('on');
     layout(); tryLandscape();
     camera.position.set(P.x + Math.sin(cam.yaw) * cam.d, 1.6 + Math.sin(cam.pitch) * cam.d, P.z + Math.cos(cam.yaw) * cam.d);
@@ -5459,6 +5468,7 @@ const Game = (() => {
     return true;
   }
   function stop() {
+    if (BT.on) { scene.remove(BT.me.g); scene.remove(BT.en.g); BT.on = false; el('bt').classList.remove('on'); if (companion) companion.visible = true; bushIMs.forEach(b => b.visible = true); camera.near = 0.3; camera.updateProjectionMatrix(); if (BT.wildRef) { BT.wildRef.g.visible = true; } }
     writeSave();
     running = false; cancelAnimationFrame(raf); closeDialog(); input.x = input.y = 0; input.run = false;
     $('game').classList.remove('on'); document.body.classList.remove('inGame');
@@ -5467,7 +5477,590 @@ const Game = (() => {
     if (window.resumeMenuFx) window.resumeMenuFx();
     if (window.onGameStop) window.onGameStop();
   }
+  // =====================================================================
+  // ABENTEUER: Wald, Brisko, wilde Tiere, Kämpfe, Herausforderer, Silpods, Fliegen
+  // =====================================================================
+  const FC = { x: 0, z: -92 }, FR = 30;                          // Waldgebiet hinter dem Tor
+  const CLEAR = { x: -5, z: -102 }, HUT = { x: 17, z: -104 };
+  const brookZ = x => -79 + 3 * Math.sin(x * 0.13);
+  function inForest(x, z) { return Math.hypot(x - FC.x, z - FC.z) < FR; }
+  function inAdv(x, z) { return inForest(x, z) || (Math.abs(x) < 4 && z < -VR + 2 && z > -66); }
+  function forestPathDist(x, z) {
+    const segs = [[0, -60, 0, -79], [0, -79, -2, -92], [-2, -92, CLEAR.x, CLEAR.z], [-2, -92, 9, -98], [9, -98, HUT.x - 2, HUT.z + 3]];
+    let best = 1e9;
+    for (const [x1, z1, x2, z2] of segs) { const dx = x2 - x1, dz = z2 - z1, t = Math.max(0, Math.min(1, ((x - x1) * dx + (z - z1) * dz) / (dx * dx + dz * dz))); best = Math.min(best, Math.hypot(x - x1 - dx * t, z - z1 - dz * t)); }
+    return best;
+  }
+  function canWalk(x, z) {
+    if (Math.hypot(x, z) < VILLAGE_R) return true;
+    if (Q.step < 1) return false;
+    const corr = Math.abs(x) < 2.3 && z < -VR + 1.5 && z > -64;
+    if (!corr && !inForest(x, z)) return false;
+    if (!corr && Math.hypot(x - FC.x, z - FC.z) > FR - 1.2) return false;
+    if (Math.abs(z - brookZ(x)) < 1.5 && Math.abs(x) > 1.5) return false;   // Bach nur über die Brücke
+    return true;
+  }
+  function advTrees(tryTree) {                                   // Bäume im Waldgebiet (echte Modelle)
+    for (let gx = FC.x - FR; gx <= FC.x + FR; gx += 7.2) for (let gz = FC.z - FR; gz <= FC.z + FR; gz += 7.2) {
+      const x = gx + (rnd() - 0.5) * 4, z = gz + (rnd() - 0.5) * 4;
+      if (!inForest(x, z) || forestPathDist(x, z) < 4.5) continue;
+      if (Math.hypot(x - CLEAR.x, z - CLEAR.z) < 10 || Math.hypot(x - HUT.x, z - HUT.z) < 8 || Math.abs(z - brookZ(x)) < 3) continue;
+      tryTree(x, z, false);
+    }
+    // dichter Rand ums Waldgebiet, damit man nirgends ins Leere schaut
+    for (let i = 0; i < 46; i++) { const a = i / 46 * 6.283, r = FR + 2 + rnd() * 5, x = FC.x + Math.cos(a) * r, z = FC.z + Math.sin(a) * r; if (Math.hypot(x, z) > VR + 6) tryTree(x, z, false); }
+  }
+  function advBushes(bushes) {
+    for (let i = 0; i < 45; i++) { const a = rnd() * 6.283, r = Math.sqrt(rnd()) * (FR - 2), x = FC.x + Math.cos(a) * r, z = FC.z + Math.sin(a) * r;
+      if (forestPathDist(x, z) > 3 && Math.hypot(x - CLEAR.x, z - CLEAR.z) > 7 && Math.hypot(x - HUT.x, z - HUT.z) > 6 && Math.abs(z - brookZ(x)) > 2.2) bushes.push([x, z, 0.6 + rnd() * 0.6]); }
+  }
+
+  // ---------- Tierarten ----------
+  const SP = {
+    brisko:   { name: 'Brisko', type: 'Wind', hp: 34, atk: 9, def: 6, spd: 10, sp: { n: 'Sturmflügel', k: 'dmg', p: 2.1 }, desc: 'Adler' },
+    moosling: { name: 'Moosling', type: 'Pflanze', hp: 27, atk: 6, def: 6, spd: 5, sp: { n: 'Moosschild', k: 'heal', p: 0.45 }, curious: true, col: 0x5aa83c },
+    hoppla:   { name: 'Hoppla', type: 'Normal', hp: 22, atk: 7, def: 4, spd: 11, sp: { n: 'Doppeltritt', k: 'double', p: 1.0 }, shy: true, col: 0xf1e6d2 },
+    glimm:    { name: 'Glimmfuchs', type: 'Feuer', hp: 25, atk: 9, def: 4, spd: 9, sp: { n: 'Glutschweif', k: 'burn', p: 1.5 }, curious: true, col: 0xf07a28 },
+    stachli:  { name: 'Stachli', type: 'Erde', hp: 30, atk: 7, def: 8, spd: 4, sp: { n: 'Stachelkugel', k: 'dmg', p: 1.8 }, shy: true, col: 0x8a5a36 },
+    borki:    { name: 'Borki', type: 'Erde', hp: 40, atk: 9, def: 8, spd: 5, sp: { n: 'Rindenhieb', k: 'dmg', p: 1.9 }, col: 0x6e4a2c },
+  };
+  const EFF = { Wind: { Pflanze: 1.5, Erde: 0.75 }, Feuer: { Pflanze: 1.5, Erde: 0.75 }, Pflanze: { Erde: 1.5, Feuer: 0.75 }, Erde: { Feuer: 1.5, Wind: 1.25 } };
+  function stats(m) { const s = SP[m.sp], k = 1 + 0.13 * (m.lvl - 1); return { hp: Math.round(s.hp * k), atk: s.atk * k, def: s.def * k, spd: s.spd * k }; }
+  function newMon(sp, lvl) { const m = { sp, lvl, xp: 0 }; m.hp = stats(m).hp; return m; }
+  const xpNeed = l => l * 15;
+
+  // Spielstand des Abenteuers
+  const ADV = { team: [], pods: 0, active: 0, wins: 0, flewOnce: false, rinaBeaten: false };
+  function briskoMon() { return ADV.team.find(m => m.sp === 'brisko'); }
+
+  // ---------- Gebaute Tierfiguren (Platzhalter, bis echte 3D-Modelle kommen) ----------
+  function eye(parent, x, y, z, s) {
+    const w = M(new THREE.SphereGeometry(s, 12, 10), 0xffffff, x, y, z, parent);
+    M(new THREE.SphereGeometry(s * 0.62, 10, 8), 0x1a1420, x + Math.sign(x) * s * 0.05, y, z + s * 0.5, parent);
+    M(new THREE.SphereGeometry(s * 0.2, 6, 5), 0xffffff, x + s * 0.2, y + s * 0.25, z + s * 0.95, parent);
+    return w;
+  }
+  function makeCreature(sp, stage) {
+    const g = new THREE.Group(), body = new THREE.Group(); g.add(body);
+    const P2 = { body, wings: [], ears: [], legs: [], tail: null };
+    const S = (r, c, x, y, z, sx, sy, sz, par) => { const m = M(new THREE.SphereGeometry(r, 16, 12), c, x, y, z, par || body); m.scale.set(sx || 1, sy || 1, sz || 1); return m; };
+    if (sp === 'brisko') {
+      const baby = stage === 0;
+      const fur = baby ? 0xe9e4dc : 0x7a4f2c, head = baby ? 0xf6f2ea : 0xf8f6f0;
+      S(0.5, fur, 0, 0.62, 0, 1, baby ? 1.05 : 1.15, baby ? 1 : 1.25);                    // Körper
+      if (!baby) S(0.36, 0xf3e9d6, 0, 0.62, 0.28, 0.9, 1, 0.6);                              // heller Bauch
+      const h = S(baby ? 0.42 : 0.36, head, 0, baby ? 1.2 : 1.32, baby ? 0.08 : 0.32);
+      const beak = M(new THREE.ConeGeometry(0.11, 0.3, 8), 0xffc21f, 0, baby ? 1.14 : 1.27, baby ? 0.5 : 0.7, body); beak.rotation.x = Math.PI / 2 + 0.35;
+      eye(body, 0.16, baby ? 1.3 : 1.4, baby ? 0.38 : 0.6, baby ? 0.11 : 0.085); eye(body, -0.16, baby ? 1.3 : 1.4, baby ? 0.38 : 0.6, baby ? 0.11 : 0.085);
+      if (!baby) { const br = M(new THREE.BoxGeometry(0.5, 0.06, 0.1), 0x3a2414, 0, 1.52, 0.55, body); br.rotation.x = -0.3; }
+      for (const s of [-1, 1]) {
+        const w = new THREE.Group(); w.position.set(s * 0.42, 0.85, -0.05); body.add(w);
+        const wm = S(0.45, baby ? 0xdcd5cb : 0x5e3a1e, s * (baby ? 0.12 : 0.45), -0.1, 0, baby ? 0.5 : 1.5, baby ? 0.7 : 0.28, baby ? 0.8 : 0.9, w);
+        if (!baby) S(0.3, 0x3a2414, s * 0.95, -0.12, -0.05, 1.1, 0.2, 0.7, w);
+        P2.wings.push({ g: w, s });
+        const leg = M(new THREE.CylinderGeometry(0.05, 0.05, 0.3, 6), 0xffb21f, s * 0.18, 0.15, 0.05, body);
+        M(new THREE.SphereGeometry(0.1, 8, 6), 0xffb21f, s * 0.18, 0.03, 0.12, body).scale.set(1.2, 0.5, 1.4);
+        P2.legs.push(leg);
+      }
+      const tail = S(0.3, baby ? 0xdcd5cb : 0x5e3a1e, 0, 0.55, -0.6, 1.1, 0.3, 1.2); P2.tail = tail;
+      if (baby) for (let i = 0; i < 6; i++) S(0.1, 0xffffff, Math.cos(i) * 0.1, 1.6 + (i % 2) * 0.05, -0.05 + Math.sin(i) * 0.08, 0.6, 1.6, 0.6);   // Flaum auf dem Kopf
+      if (baby) { const band = M(new THREE.TorusGeometry(0.36, 0.05, 6, 20), 0xffffff, 0.25, 0.8, 0, body); band.rotation.y = Math.PI / 2; band.userData.bandage = true; P2.bandage = band; }
+    } else if (sp === 'moosling') {
+      S(0.62, 0x4f9a3a, 0, 0.62, 0, 1, 0.9, 1);
+      for (let i = 0; i < 9; i++) { const a = i * 0.7, e = 0.3 + (i % 3) * 0.35; S(0.2, i % 2 ? 0x3c7f2e : 0x6fbf4a, Math.cos(a) * 0.5 * Math.cos(e), 0.62 + Math.sin(e) * 0.55, Math.sin(a) * 0.5 * Math.cos(e)); }
+      const leaf = M(new THREE.ConeGeometry(0.16, 0.5, 6), 0x9adf5a, 0, 1.35, 0, body); leaf.rotation.z = 0.4; P2.ears.push(leaf);
+      eye(body, 0.2, 0.75, 0.52, 0.13); eye(body, -0.2, 0.75, 0.52, 0.13);
+      for (const s of [-1, 1]) P2.legs.push(S(0.14, 0x3a6a2a, s * 0.3, 0.12, 0.1, 1.2, 0.7, 1.4));
+    } else if (sp === 'hoppla') {
+      S(0.5, 0xf1e6d2, 0, 0.55, -0.1, 1, 0.95, 1.15); S(0.38, 0xf6eee0, 0, 1.05, 0.25);
+      for (const s of [-1, 1]) { const e = new THREE.Group(); e.position.set(s * 0.16, 1.35, 0.2); body.add(e); S(0.12, 0xf1e6d2, 0, 0.35, 0, 1, 3.2, 0.6, e); S(0.07, 0xf4a8b8, 0, 0.35, 0.05, 1, 2.6, 0.3, e); e.rotation.z = s * 0.2; P2.ears.push(e); }
+      eye(body, 0.15, 1.12, 0.52, 0.1); eye(body, -0.15, 1.12, 0.52, 0.1); S(0.06, 0xf48aa0, 0, 0.98, 0.62);
+      S(0.17, 0xffffff, 0, 0.55, -0.68); for (const s of [-1, 1]) P2.legs.push(S(0.16, 0xe8dcc6, s * 0.25, 0.12, 0.15, 1, 0.6, 1.6));
+    } else if (sp === 'glimm') {
+      S(0.42, 0xf07a28, 0, 0.62, 0, 0.9, 0.9, 1.35); S(0.3, 0xfff1dc, 0, 0.55, 0.3, 0.8, 0.8, 0.8);
+      S(0.34, 0xf07a28, 0, 1.0, 0.45); const sn = S(0.14, 0xfff1dc, 0, 0.92, 0.75, 1, 0.8, 1.4); S(0.05, 0x1a1420, 0, 0.95, 0.94);
+      for (const s of [-1, 1]) { const e = M(new THREE.ConeGeometry(0.12, 0.32, 6), 0xf07a28, s * 0.18, 1.32, 0.4, body); e.rotation.z = -s * 0.25; P2.ears.push(e); }
+      eye(body, 0.13, 1.08, 0.72, 0.08); eye(body, -0.13, 1.08, 0.72, 0.08);
+      const t = new THREE.Group(); t.position.set(0, 0.7, -0.5); body.add(t); S(0.22, 0xf07a28, 0, 0.1, -0.35, 0.9, 0.9, 1.8, t);
+      const tip = S(0.16, 0xffe36a, 0, 0.12, -0.75, 1, 1, 1.2, t); tip.material = new THREE.MeshBasicMaterial({ color: 0xffd23a }); P2.tail = t;
+      for (const s of [-1, 1]) for (const f of [-1, 1]) P2.legs.push(M(new THREE.CylinderGeometry(0.07, 0.06, 0.4, 6), 0x5a2a12, s * 0.18, 0.2, f * 0.3, body));
+    } else if (sp === 'stachli') {
+      S(0.55, 0x8a5a36, 0, 0.5, 0, 1, 0.85, 1.15); S(0.32, 0xe8cfa6, 0, 0.42, 0.42, 1, 0.9, 0.8);
+      for (let i = 0; i < 22; i++) { const a = (i % 7) / 7 * Math.PI * 1.2 - 0.1, b = Math.floor(i / 7) * 0.9 - 0.9 + (i % 2) * 0.2; const sp2 = M(new THREE.ConeGeometry(0.08, 0.38, 5), 0x4a2e1a, Math.sin(b) * 0.5, 0.5 + Math.cos(a) * 0.45, -0.1 - Math.sin(a) * 0.5 + 0.1, body);
+        sp2.lookAt(body.localToWorld(new THREE.Vector3(Math.sin(b) * 2, 0.5 + Math.cos(a) * 2, -Math.sin(a) * 2))); sp2.rotateX(Math.PI / 2); }
+      S(0.07, 0x1a1420, 0, 0.45, 0.78); eye(body, 0.14, 0.58, 0.62, 0.08); eye(body, -0.14, 0.58, 0.62, 0.08);
+      for (const s of [-1, 1]) P2.legs.push(S(0.1, 0x6e4426, s * 0.3, 0.08, 0.2, 1, 0.6, 1.4));
+    } else if (sp === 'borki') {
+      S(0.85, 0x6e4a2c, 0, 1.0, 0, 1, 1, 1.1); S(0.55, 0xa8845a, 0, 0.9, 0.5, 0.9, 1, 0.6);
+      S(0.55, 0x6e4a2c, 0, 1.9, 0.35); S(0.25, 0xa8845a, 0, 1.78, 0.82, 1, 0.8, 0.9); S(0.08, 0x1a1420, 0, 1.85, 1.05);
+      for (const s of [-1, 1]) { P2.ears.push(S(0.18, 0x6e4a2c, s * 0.38, 2.35, 0.3)); eye(body, s * 0.2, 2.02, 0.8, 0.09); }
+      for (let i = 0; i < 6; i++) S(0.16, 0x3f7a2e, Math.cos(i) * 0.5, 1.6 + Math.sin(i * 2) * 0.2, -0.4 - (i % 2) * 0.2, 1.2, 0.5, 1.2);   // Moos auf dem Rücken
+      for (const s of [-1, 1]) for (const f of [-1, 1]) P2.legs.push(S(0.26, 0x5a3a22, s * 0.5, 0.25, f * 0.45, 1, 1.2, 1));
+    }
+    g.userData.P = P2; g.userData.sp = sp; return g;
+  }
+  function animCreature(g, t, moving, flap) {
+    const P2 = g.userData.P, sp = g.userData.sp;
+    P2.body.position.y = moving ? Math.abs(Math.sin(t * (sp === 'hoppla' ? 9 : 11))) * (sp === 'hoppla' ? 0.35 : 0.12) : Math.sin(t * 2) * 0.03;
+    P2.body.rotation.z = moving ? Math.sin(t * 11) * 0.06 : 0;
+    for (const w of P2.wings) { const a = flap ? Math.sin(t * 14) * 0.9 : (moving ? Math.sin(t * 8) * 0.15 : 0.05 + Math.sin(t * 1.5) * 0.04); w.g.rotation.z = w.s * a; }
+    for (const e of P2.ears) e.rotation.x = Math.sin(t * 3 + e.position.x) * 0.12;
+    if (P2.tail) P2.tail.rotation.y = Math.sin(t * (moving ? 10 : 2.5)) * 0.35;
+    P2.legs.forEach((l, i) => { l.position.y = (l.userData.y0 === undefined ? (l.userData.y0 = l.position.y) : l.userData.y0) + (moving ? Math.max(0, Math.sin(t * 11 + i * Math.PI)) * 0.08 : 0); });
+  }
+
+  // ---------- Bau der Waldwelt ----------
+  let logG = null, babyBrisko = null, briskoG = null, briskoStage = -1, companion = null, companionSp = null, hutSpot = null, rinaG = null, logSpot = null;
+  const wild = [];
+  function buildAdventure() {
+    // Waldwege
+    const dirt = 0xc9a874;
+    const seg = (x1, z1, x2, z2, w) => { const len = Math.hypot(x2 - x1, z2 - z1), m = flat(new THREE.PlaneGeometry(w, len + 0.01), dirt, (x1 + x2) / 2, (z1 + z2) / 2, 0); m.rotateZ(-Math.atan2(x2 - x1, -(z2 - z1)));
+      const n = Math.ceil(len / 2); const pos = m.geometry.attributes.position; m.geometry.dispose(); m.geometry = new THREE.PlaneGeometry(w, len + 0.01, 1, n);
+      const p = m.geometry.attributes.position, tmp = new THREE.Vector3(); m.updateMatrixWorld();
+      for (let i = 0; i < p.count; i++) { tmp.set(p.getX(i), p.getY(i), 0).applyMatrix4(m.matrixWorld); p.setZ(i, groundH(tmp.x, tmp.z) + 0.06); }
+      flat(new THREE.CircleGeometry(w / 2, 12), dirt, x2, z2, groundH(x2, z2) + 0.07); };
+    seg(0, -VR + 0.5, 0, -79, 3); seg(0, -79, -2, -92, 3); seg(-2, -92, CLEAR.x, CLEAR.z, 3); seg(-2, -92, 9, -98, 2.6); seg(9, -98, HUT.x - 2, HUT.z + 3, 2.6);
+    flat(new THREE.CircleGeometry(8, 28), 0x5f9a3e, CLEAR.x, CLEAR.z, groundH(CLEAR.x, CLEAR.z) + 0.04);
+    // Bach mit Wellen
+    const bc = document.createElement('canvas'); bc.width = 64; bc.height = 256; const bx = bc.getContext('2d');
+    const gr = bx.createLinearGradient(0, 0, 64, 0); gr.addColorStop(0, '#3f9fd6'); gr.addColorStop(0.5, '#6fd0f5'); gr.addColorStop(1, '#3f9fd6'); bx.fillStyle = gr; bx.fillRect(0, 0, 64, 256);
+    bx.strokeStyle = 'rgba(255,255,255,.55)'; bx.lineWidth = 3; for (let i = 0; i < 9; i++) { bx.beginPath(); const y = i * 29 + 6; bx.moveTo(8 + (i % 3) * 14, y); bx.quadraticCurveTo(32, y + 8, 56 - (i % 2) * 12, y); bx.stroke(); }
+    const wt = new THREE.CanvasTexture(bc); wt.wrapS = wt.wrapT = THREE.RepeatWrapping; wt.repeat.set(1, 18);
+    const N = 90, bp = [], bi = [], bu = [];
+    for (let i = 0; i <= N; i++) { const x = FC.x - FR - 4 + (2 * FR + 8) * i / N, z = brookZ(x); for (const s of [-1, 1]) { bp.push(x, groundH(x, z) + 0.12, z + s * 1.3); bu.push(s < 0 ? 0 : 1, i / N); } }
+    for (let i = 0; i < N; i++) { const a = i * 2; bi.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
+    const bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.Float32BufferAttribute(bp, 3)); bg.setAttribute('uv', new THREE.Float32BufferAttribute(bu, 2)); bg.setIndex(bi);
+    const brook = new THREE.Mesh(bg, new THREE.MeshBasicMaterial({ map: wt, side: THREE.DoubleSide })); scene.add(brook); brook.userData.tex = wt; advAnim.push(dt => { wt.offset.y -= dt * 0.35; });
+    for (let i = 0; i < 26; i++) { const x = FC.x - FR + rnd() * 2 * FR, z = brookZ(x) + (rnd() < 0.5 ? -1 : 1) * (1.3 + rnd() * 0.5); if (Math.abs(x) > 2.2) { const r = M(new THREE.IcosahedronGeometry(0.3 + rnd() * 0.3, 0), 0x9a98a8, x, groundH(x, z) + 0.1, z); r.rotation.set(rnd(), rnd(), 0); } }
+    // Holzbrücke
+    const by = groundH(0, brookZ(0)) + 0.35;
+    for (let k = -5; k <= 5; k++) M(new THREE.BoxGeometry(3.0, 0.14, 0.42), k % 2 ? 0x9a6a3e : 0xa8764a, 0, by + 0.25 * Math.cos(k / 5 * 1.2), brookZ(0) + k * 0.44);
+    for (const s of [-1, 1]) { for (const k of [-5, 0, 5]) M(new THREE.CylinderGeometry(0.08, 0.08, 1.0, 6), 0x7a4f30, s * 1.45, by + 0.6, brookZ(0) + k * 0.44); const rl = M(new THREE.BoxGeometry(0.1, 0.1, 4.6), 0x7a4f30, s * 1.45, by + 1.05, brookZ(0)); }
+    spots.push({ x: 0, z: brookZ(0), r: 2.2, title: 'Holzbrücke', text: ['Ein kleiner Bach plätschert unter der Brücke.', 'Das Wasser ist ganz klar – man sieht kleine Fische.'] });
+    // Umgestürzter Baum auf der Lichtung
+    logG = new THREE.Group(); logG.position.set(CLEAR.x + 1.2, groundH(CLEAR.x, CLEAR.z), CLEAR.z); scene.add(logG);
+    const lg = M(new THREE.CylinderGeometry(0.55, 0.65, 7, 12), 0x6b4a2e, 0, 0.55, 0, logG); lg.rotation.z = Math.PI / 2; lg.rotation.y = 0.35;
+    for (const [x, a] of [[-1.5, 0.8], [0.8, -0.7], [2.2, 0.5]]) { const br = M(new THREE.CylinderGeometry(0.1, 0.16, 1.8, 6), 0x6b4a2e, x, 1.1, 0.3, logG); br.rotation.set(a, 0, 0.4); M(new THREE.IcosahedronGeometry(0.7, 1), 0x4f9a3f, x + 0.3, 1.9, 0.3 + a * 0.7, logG); }
+    for (const s of [-1, 1]) M(new THREE.CylinderGeometry(0.66, 0.66, 0.05, 12), 0xd8b47a, s * 3.48 * Math.cos(0.35), 0.55, -s * 3.48 * Math.sin(0.35), logG).rotation.set(0, -0.35, Math.PI / 2);
+    babyBrisko = makeCreature('brisko', 0); babyBrisko.scale.setScalar(0.55); babyBrisko.position.set(CLEAR.x - 0.2, groundH(CLEAR.x, CLEAR.z), CLEAR.z + 1.2); babyBrisko.rotation.y = 0.3; scene.add(babyBrisko);
+    logSpot = { x: CLEAR.x, z: CLEAR.z + 1.4, r: 3.4, talk: true, title: 'Umgestürzter Baum', text: () => Q.step === 2 ? [
+        'Da! Unter dem umgestürzten Baum piepst etwas …',
+        'Ein Adlerküken! Sein Flügel ist unter einem Ast eingeklemmt.',
+        'Ganz ruhig, Kleiner. Ich hebe den Ast an … hau ruck!',
+        'Geschafft! Du bist ja ganz zittrig. Ich nenne dich … Brisko!',
+        'Komm, wir bringen dich zur Heilerin ins Dorf.'] : ['Hier unter dem Baum habe ich Brisko gefunden.'],
+      onEnd: () => { if (Q.step === 2) rescueBrisko(); } };
+    spots.push(logSpot);
+    // Hütte der Herausforderin
+    const hg = new THREE.Group(); hg.position.set(HUT.x, groundH(HUT.x, HUT.z), HUT.z); hg.rotation.y = -0.9; scene.add(hg);
+    for (let i = 0; i < 9; i++) for (const [w, x, z, ry] of [[5.4, 0, 2.0, 0], [5.4, 0, -2.0, 0], [4.0, 2.6, 0, Math.PI / 2], [4.0, -2.6, 0, Math.PI / 2]]) {
+      if (i < 6 && x === 0 && z > 0 && false) continue; const l = M(new THREE.CylinderGeometry(0.2, 0.2, w, 8), i % 2 ? 0x8a5a33 : 0x7a4d2a, x, 0.2 + i * 0.38, z, hg); l.rotation.set(0, ry, Math.PI / 2); }
+    const door = M(new THREE.BoxGeometry(1.1, 2.0, 0.1), 0x5a3a20, 0, 1.0, 2.25, hg);
+    M(new THREE.SphereGeometry(0.07, 6, 5), 0xffd21f, 0.35, 1.0, 2.32, hg);
+    for (const s of [-1, 1]) { const rf = M(new THREE.BoxGeometry(6.4, 0.18, 3.4), 0x4f7a3a, 0, 4.15, s * 1.25, hg); rf.rotation.x = s * 0.62; }
+    M(new THREE.BoxGeometry(0.5, 1.6, 0.5), 0x9a98a8, 1.6, 4.4, -0.8, hg);
+    for (const s of [-1, 1]) M(new THREE.BoxGeometry(0.8, 0.7, 0.08), 0xffe9a0, s * 1.6, 2.0, 2.24, hg);
+    const ss = fairySign('Hütte von Rina', 0, 3.6, hg, 2.8);
+    rinaG = makeCreature('borki', 0); rinaG.position.set(HUT.x - 2.6, groundH(HUT.x - 2.6, HUT.z + 3), HUT.z + 3.4); rinaG.rotation.y = 0.6; scene.add(rinaG);
+    colliders.push({ x: HUT.x, z: HUT.z, r: 3.1 }, { x: CLEAR.x + 1.2, z: CLEAR.z, r: 1.0 }, { x: CLEAR.x + 3.6, z: CLEAR.z - 1.0, r: 0.9 }, { x: CLEAR.x - 1.8, z: CLEAR.z + 0.8, r: 0.9 });
+    hutSpot = { x: HUT.x - 3.5, z: HUT.z + 4.5, r: 5, talk: true, title: 'Waldhüterin Rina', text: () => rinaText(), onEnd: () => rinaEnd() };
+    spots.push(hutSpot);
+    // Wilde Tiere
+    const kinds = ['moosling', 'hoppla', 'glimm', 'stachli', 'moosling', 'hoppla', 'glimm', 'stachli', 'moosling', 'glimm'];
+    kinds.forEach((sp, i) => spawnWild(sp, i === 4));            // eines ist ein Tierbaby
+    briskoG = new THREE.Group(); scene.add(briskoG);
+  }
+  const advAnim = [], bushIMs = []; let bushPts = [];
+  function spawnWild(sp, baby) {
+    let x, z; do { const a = rnd() * 6.283, r = 6 + Math.sqrt(rnd()) * (FR - 8); x = FC.x + Math.cos(a) * r; z = FC.z + Math.sin(a) * r; } while (!canWalkAny(x, z) || Math.abs(z - brookZ(x)) < 2.5);
+    const lvl = baby ? 1 : 2 + Math.floor(rnd() * 3);
+    const g = makeCreature(sp); g.scale.setScalar(baby ? 0.55 : 0.95 + lvl * 0.04); g.position.set(x, groundH(x, z), z); scene.add(g);
+    const w = { g, sp, lvl, baby, x, z, tx: x, tz: z, wait: rnd() * 3, face: rnd() * 6, gone: 0 };
+    w.spot = { x, z, r: 2.6, talk: false, title: (baby ? 'Tierbaby: ' : 'Wilder ') + SP[sp].name, wild: w };
+    spots.push(w.spot); wild.push(w); return w;
+  }
+  function canWalkAny(x, z) { return inForest(x, z) && Math.hypot(x - FC.x, z - FC.z) < FR - 2 && Math.hypot(x - HUT.x, z - HUT.z) > 5 && Math.hypot(x - CLEAR.x, z - CLEAR.z) > 3; }
+
+  // ---------- Geschichte ----------
+  function rescueBrisko() {
+    babyBrisko.visible = false;
+    ADV.team = [newMon('brisko', 1)]; ADV.active = 0; ADV.team[0].hp = Math.ceil(ADV.team[0].hp * 0.3);
+    SFX.bird(); setStep(3); refreshCompanion(); advHud();
+  }
+  function rinaText() {
+    if (ADV.rinaBeaten) return ['Rina: Hallo Siles! Borki und ich trainieren gerade.', 'Rina: Du und Brisko seid ein tolles Team. Wir sind Freunde, das bleibt so!'];
+    if (Q.step < 4) return ['Rina: Oh, ein Adlerküken! Das ist ja noch ganz klein.', 'Rina: Gegen Babys kämpfe ich nicht. Bring es erst zur Heilerin.'];
+    if (Q.step === 4) return ['Rina: Ich bin Rina, die Waldhüterin. Wer meine Hütte betritt, muss gegen mich kämpfen!', 'Rina: Aber dein Brisko ist noch zu unerfahren.', 'Rina: Gewinn erst zwei Kämpfe gegen wilde Tiere, dann komm wieder.'];
+    return ['Rina: Du bist also zurück! Dein Brisko sieht schon viel stärker aus.', 'Rina: Wenn du gewinnst, bekommst du Silpods. Damit kannst du wilde Tiere zähmen.', 'Rina: Borki, los gehts!'];
+  }
+  function rinaEnd() { if (!ADV.rinaBeaten && Q.step >= 5) startBattle(newMon('borki', Math.max(3, (briskoMon() || { lvl: 3 }).lvl + 1)), 'Rina'); }
+
+  const GOALS2 = ['Finde die Heilerin im Dorf und sprich mit ihr', 'Geh durch das Waldtor in den Wald',
+    'Folge dem Piepsen zur Lichtung', 'Bring Brisko zur Heilerin ins Dorf', 'Trainiere Brisko: Gewinne 2 Kämpfe gegen wilde Tiere',
+    'Fordere Waldhüterin Rina bei ihrer Hütte heraus', 'Zähme ein wildes Tier mit einem Silpod', 'Trainiere Brisko bis Stufe 8 – dann lernt er fliegen',
+    'Flieg mit Brisko über das Tal! (Knopf 🦅)', 'Fortsetzung folgt: Hinter den Bergen warten neue Herausforderer!'];
+  function goalText() {
+    let t = GOALS2[Q.step] || '';
+    if (Q.step === 4) t += ' (' + Math.min(2, ADV.wins) + '/2)';
+    if (Q.step === 7) { const b = briskoMon(); t += ' (Stufe ' + (b ? b.lvl : 1) + '/8)'; }
+    return t;
+  }
+  function goalTarget2() {
+    if (Q.step === 0 || Q.step === 3) return healer.g.position.clone().setY(healer.h + 1.45);
+    if (Q.step === 1) return new THREE.Vector3(0, 5.4, -VR);
+    if (Q.step === 2) return new THREE.Vector3(CLEAR.x, groundH(CLEAR.x, CLEAR.z) + 2.6, CLEAR.z + 1);
+    if (Q.step === 5) return new THREE.Vector3(HUT.x, groundH(HUT.x, HUT.z) + 6.2, HUT.z);
+    return null;
+  }
+  function healerLines() {
+    if (Q.step === 3) return ['Heilerin: Oh! Ein Adlerküken – und sein Flügel ist verletzt.', 'Heilerin: Halt ihn ganz ruhig … So, ein Verband, etwas Kräutersalbe … fertig!',
+      'Heilerin: Er hat dich schon richtig gern, Siles. Ihr seid jetzt Freunde.', 'Heilerin: Fliegen kann er noch nicht. Aber Adler werden stark, wenn sie sich beweisen.',
+      'Heilerin: Im Wald leben wilde Tiere. Manche sind neugierig, manche scheu. Wenn ihr gegen sie antretet, lernt Brisko dazu.',
+      'Heilerin: Und Waldhüterin Rina hat eine Hütte im Wald. Wer sie besiegt, bekommt Silpods – damit kann man Tiere zähmen.',
+      'Heilerin: Wenn deine Tiere müde sind, komm einfach zu mir. Ich heile sie immer.'];
+    if (Q.step >= 4) return ['Heilerin: Lass mich deine Tiere ansehen …', 'Heilerin: So, alle wieder kerngesund! Pass gut auf sie auf.'];
+    return null;
+  }
+  function healerEnd() {
+    if (Q.step === 3) { setStep(4); }
+    if (Q.step >= 4) { healAll(); advHud(); }
+  }
+  function healAll() { for (const m of ADV.team) { m.hp = stats(m).hp; } }
+
+  // ---------- Begleiter (nur einer läuft mit) ----------
+  function briskoStageOf(m) { return m.lvl >= 8 ? 2 : m.lvl >= 5 ? 1 : 0; }
+  function refreshCompanion() {
+    const m = ADV.team[ADV.active];
+    const key = m ? m.sp + (m.sp === 'brisko' ? briskoStageOf(m) : '') : null;
+    if (key === companionSp) return;
+    if (companion) { scene.remove(companion); companion = null; }
+    companionSp = key; if (!m) return;
+    if (m.sp === 'brisko') {
+      const st = briskoStageOf(m); companion = makeCreature('brisko', st);
+      companion.scale.setScalar(st === 0 ? 0.42 : st === 1 ? 1.75 : 2.3);       // Flugtiere sind größer als Siles
+      if (companion.userData.P.bandage) companion.userData.P.bandage.visible = Q.step <= 3;
+    } else { companion = makeCreature(m.sp); companion.scale.setScalar(1 + m.lvl * 0.03); }
+    companion.userData.mon = m; scene.add(companion);
+    companion.position.set(P.x + 1.5, groundH(P.x, P.z), P.z + 1.5);
+  }
+  function updateCompanion(dt, y) {
+    if (!companion) return;
+    const m = companion.userData.mon;
+    if (m.sp === 'brisko' && briskoStageOf(m) === 0 && hero) {     // Baby sitzt auf der Schulter
+      const a = hero.root.rotation.y, ox = Math.cos(a) * -0.5, oz = -Math.sin(a) * -0.5;
+      companion.position.set(P.x + ox, y + 1.72, P.z + oz); companion.rotation.y = a; animCreature(companion, time, false, P.move > 1.1);
+      return;
+    }
+    const back = companion.userData.back || (companion.userData.back = new THREE.Vector3(P.x, 0, P.z));
+    const big = m.sp === 'brisko' ? 3.4 : 2.2, fw = m.sp === 'brisko' ? 2.6 : 1.2, tx = P.x + Math.cos(cam.yaw) * big - Math.sin(cam.yaw) * fw, tz = P.z - Math.sin(cam.yaw) * big - Math.cos(cam.yaw) * fw;   // seitlich neben Siles, nie vor der Kamera
+    const dx = tx - companion.position.x, dz = tz - companion.position.z, d = Math.hypot(dx, dz);
+    const moving = d > 0.6;
+    if (moving) { const sp = Math.min(d, (P.move > 1.1 ? 9 : 5.5) * dt * Math.min(1.6, d / 1.5)); companion.position.x += dx / d * sp; companion.position.z += dz / d * sp; companion.rotation.y = Math.atan2(dx, dz); }
+    if (d > 25) { companion.position.x = tx; companion.position.z = tz; }
+    companion.position.y = groundH(companion.position.x, companion.position.z);
+    animCreature(companion, time, moving, false);
+  }
+
+  // ---------- Wilde Tiere: neugierig oder scheu ----------
+  function updateWild(dt) {
+    for (const w of wild) {
+      if (w.gone > 0) { w.gone -= dt; if (w.gone <= 0) { w.g.visible = true; w.spot.r = 2.6; } else continue; }
+      const p = w.g.position, dP = Math.hypot(P.x - p.x, P.z - p.z);
+      let tx = w.tx, tz = w.tz, speed = 1.4;
+      if (SP[w.sp].shy && dP < 7 && !BT.on) { tx = p.x + (p.x - P.x) * 2; tz = p.z + (p.z - P.z) * 2; speed = 4.6; }
+      else if (SP[w.sp].curious && dP < 10 && dP > 2.4 && !BT.on) { tx = P.x; tz = P.z; speed = 2.2; }
+      else if (SP[w.sp].curious && dP <= 2.4) { tx = p.x; tz = p.z; w.face = Math.atan2(P.x - p.x, P.z - p.z); }
+      else if (Math.hypot(w.tx - p.x, w.tz - p.z) < 0.3) { w.wait -= dt; if (w.wait < 0) { w.wait = 2 + rnd() * 4; const a = rnd() * 6.283, r = 2 + rnd() * 6; w.tx = p.x + Math.cos(a) * r; w.tz = p.z + Math.sin(a) * r; if (!canWalkAny(w.tx, w.tz)) { w.tx = p.x; w.tz = p.z; } } }
+      const dx = tx - p.x, dz = tz - p.z, d = Math.hypot(dx, dz); let moving = false;
+      if (d > 0.2) { const st = Math.min(d, speed * dt), nx = p.x + dx / d * st, nz = p.z + dz / d * st;
+        if (canWalkAny(nx, nz) && Math.abs(nz - brookZ(nx)) > 2) { p.x = nx; p.z = nz; moving = true; w.face = Math.atan2(dx, dz); } else { w.tx = p.x; w.tz = p.z; } }
+      p.y = groundH(p.x, p.z); w.spot.x = p.x; w.spot.z = p.z;
+      let dA = w.face - w.g.rotation.y; dA = Math.atan2(Math.sin(dA), Math.cos(dA)); w.g.rotation.y += dA * Math.min(1, dt * 7);
+      animCreature(w.g, time + w.lvl, moving, false);
+    }
+  }
+  function wildAction(w) {
+    if (w.baby) return openDialog('Tierbaby', ['Ein kleines ' + SP[w.sp].name + '-Baby! Es schnuppert neugierig an Siles\' Schuh.', 'Mit Tierbabys wird nicht gekämpft. Aber es mag dich – ihr seid jetzt Freunde!']);
+    if (!ADV.team.length) return openDialog('Siles', ['Ein wilder ' + SP[w.sp].name + '! Ohne Partner sollte ich ihm lieber aus dem Weg gehen.']);
+    if (Q.step < 4) return openDialog('Siles', ['Brisko ist noch verletzt. Erst zur Heilerin!']);
+    if (!ADV.team.some(m => m.hp > 0)) return openDialog('Siles', ['Meine Tiere sind erschöpft. Ich sollte zur Heilerin gehen.']);
+    const top = Math.max(...ADV.team.map(m => m.lvl)), lv = Math.max(1, Math.min(12, top - 1 + Math.floor(Math.random() * 2)));
+    startBattle(newMon(w.sp, lv), null, w);
+  }
+
+  // ---------- Kampf ----------
+  const BT = { on: false };
+  function el(id) { return document.getElementById(id); }
+  function startBattle(enemy, trainer, wildRef) {
+    const firstAlive = ADV.team.findIndex(m => m.hp > 0); if (firstAlive < 0) return;
+    if (ADV.team[ADV.active].hp <= 0) ADV.active = firstAlive;
+    Object.assign(BT, { on: true, enemy, trainer, wildRef, busy: false, cdMe: 0, cdEn: 1, burnMe: 0, burnEn: 0, defMe: false, defEn: false, t: 0 });
+    // Bühne: Siles' Tier links, Gegner rechts
+    const fx = P.x, fz = P.z;
+    const free = (x, z, r) => !colliders.some(c => c.box ? (x > c.x1 - r && x < c.x2 + r && z > c.z1 - r && z < c.z2 + r) : Math.hypot(x - c.x, z - c.z) < c.r + r) && !bushPts.some(b => Math.hypot(x - b[0], z - b[1]) < 1.3 * b[2] + r * 0.6);
+    let yaw = cam.yaw;
+    for (let k = 0; k < 48; k++) {                                            // Blickrichtung ohne Bäume/Häuser im Bild suchen
+      const yw = cam.yaw + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * Math.PI / 24, ax = Math.cos(yw), az = -Math.sin(yw), cx = fx + ax * 3.4, cz = fz + az * 3.4;
+      let ok = free(fx + ax * 6.4, fz + az * 6.4, 1.2) && free(fx + ax * 1.6, fz + az * 1.6, 0.8);
+      const camX = cx + Math.sin(yw) * 9, camZ = cz + Math.cos(yw) * 9;
+      for (const [sx, sz] of [[cx, cz], [fx + ax * 1.6, fz + az * 1.6], [fx + ax * 6.4, fz + az * 6.4], [fx, fz]])
+        for (let t = 0.12; ok && t <= 1.1; t += 0.1) ok = free(sx + (camX - sx) * t, sz + (camZ - sz) * t, 2.8);
+      if (ok) { yaw = yw; break; }
+    }
+    const ax = Math.cos(yaw), az = -Math.sin(yaw);                             // Achse quer zur Kamera
+    BT.center = new THREE.Vector3(fx + ax * 3.4, 0, fz + az * 3.4);
+    BT.me = { g: null, pos: new THREE.Vector3(fx + ax * 1.6, 0, fz + az * 1.6) }; BT.en = { g: null, pos: new THREE.Vector3(fx + ax * 6.4, 0, fz + az * 6.4) };
+    if (wildRef) wildRef.g.visible = false;
+    if (companion) companion.visible = false;
+    BT.en.g = makeCreature(enemy.sp); BT.en.g.scale.setScalar(enemy.sp === 'borki' ? 1.15 : 1.1 + enemy.lvl * 0.04); scene.add(BT.en.g);
+    placeBattler(BT.en, BT.me.pos); setMyBattler();
+    BT.camYaw = yaw; BT.snap = true; bushIMs.forEach(b => b.visible = false); camera.near = 4.5; camera.updateProjectionMatrix();   // Blätter direkt vor der Kamera ausblenden
+    el('bt').classList.add('on'); $('gTalk').classList.remove('on');
+    say(trainer ? trainer + ' schickt ' + SP[enemy.sp].name + ' in den Kampf!' : 'Ein wilder ' + SP[enemy.sp].name + ' (Stufe ' + enemy.lvl + ') stellt sich euch!');
+    btHud(); btButtons(true);
+  }
+  function placeBattler(b, other) { const y = groundH(b.pos.x, b.pos.z); b.g.position.set(b.pos.x, y, b.pos.z); b.g.rotation.y = Math.atan2(other.x - b.pos.x, other.z - b.pos.z); }
+  function setMyBattler() {
+    if (BT.me.g) scene.remove(BT.me.g);
+    const m = ADV.team[ADV.active];
+    BT.me.g = makeCreature(m.sp, m.sp === 'brisko' ? briskoStageOf(m) : 0);
+    BT.me.g.scale.setScalar(m.sp === 'brisko' ? [0.75, 1.5, 1.9][briskoStageOf(m)] : 1.1 + m.lvl * 0.04);
+    scene.add(BT.me.g); placeBattler(BT.me, BT.en.pos); BT.cdMe = 0; BT.burnMe = 0;
+  }
+  function say(t) { el('btMsg').textContent = t; }
+  function btHud() {
+    const m = ADV.team[ADV.active], e = BT.enemy, sm = stats(m), se = stats(e);
+    el('btMe').innerHTML = '<b>' + SP[m.sp].name + '</b> <i>Stufe ' + m.lvl + ' · ' + SP[m.sp].type + '</i><div class="hp"><span style="width:' + Math.max(0, m.hp / sm.hp * 100) + '%"></span></div><small>' + Math.max(0, Math.ceil(m.hp)) + ' / ' + sm.hp + ' KP</small>';
+    el('btEn').innerHTML = '<b>' + SP[e.sp].name + '</b> <i>Stufe ' + e.lvl + ' · ' + SP[e.sp].type + '</i><div class="hp"><span style="width:' + Math.max(0, e.hp / se.hp * 100) + '%"></span></div><small>' + Math.max(0, Math.ceil(e.hp)) + ' / ' + se.hp + ' KP</small>';
+  }
+  function btButtons(on) {
+    const m = ADV.team[ADV.active], wildF = !BT.trainer;
+    el('btSpec').innerHTML = '✨ ' + SP[m.sp].sp.n + (BT.cdMe > 0 ? '<small>bereit in ' + BT.cdMe + '</small>' : '<small>Spezialangriff</small>');
+    el('btSpec').disabled = !on || BT.cdMe > 0;
+    for (const id of ['btAtk', 'btDef']) el(id).disabled = !on;
+    el('btSwap').disabled = !on || ADV.team.filter(t => t.hp > 0).length < 2;
+    el('btPod').style.display = wildF ? '' : 'none'; el('btPod').disabled = !on || ADV.pods < 1; el('btPod').innerHTML = '🟣 Silpod<small>' + ADV.pods + ' übrig</small>';
+    el('btRun').style.display = wildF ? '' : 'none'; el('btRun').disabled = !on;
+    el('btSwapList').classList.remove('on');
+  }
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  function damage(att, dfn, power) {
+    const sa = stats(att), sd = stats(dfn), eff = (EFF[SP[att.sp].type] || {})[SP[dfn.sp].type] || 1;
+    return { d: Math.max(1, Math.round((sa.atk * 1.6 * power) * (10 / (10 + sd.def * 1.2)) * (0.85 + Math.random() * 0.3) * eff)), eff };
+  }
+  async function lunge(b, other) {
+    const from = b.g.position.clone(), to = from.clone().lerp(new THREE.Vector3(other.g.position.x, from.y, other.g.position.z), 0.55);
+    for (let i = 0; i <= 8; i++) { b.g.position.lerpVectors(from, to, Math.sin(i / 8 * Math.PI)); await wait(28); }
+    SFX.step(true);
+    for (let i = 0; i < 6; i++) { other.g.position.x += (i % 2 ? 0.12 : -0.12); await wait(30); }
+    other.g.position.copy(other.g.position); placeBattler(other, b.g.position);
+  }
+  async function act(side, choice) {
+    const meS = side === 'me', att = meS ? ADV.team[ADV.active] : BT.enemy, dfn = meS ? BT.enemy : ADV.team[ADV.active];
+    const A = meS ? BT.me : BT.en, D = meS ? BT.en : BT.me, nm = SP[att.sp].name;
+    if (meS) BT.defMe = false; else BT.defEn = false;
+    if (choice === 'def') { if (meS) BT.defMe = true; else BT.defEn = true; say(nm + ' geht in Abwehrhaltung.'); A.g.scale.multiplyScalar(0.9); await wait(500); A.g.scale.multiplyScalar(1 / 0.9); return; }
+    const special = choice === 'spec', s = SP[att.sp].sp;
+    if (special) { if (meS) BT.cdMe = 3; else BT.cdEn = 3; }
+    if (special && s.k === 'heal') { const mx = stats(att).hp; att.hp = Math.min(mx, att.hp + mx * s.p); say(nm + ' nutzt ' + s.n + ' und erholt sich!'); A.g.userData.flash = 0.6; await wait(700); btHud(); return; }
+    say(nm + (special ? ' setzt ' + s.n + ' ein!' : ' greift an!'));
+    const hits = special && s.k === 'double' ? 2 : 1;
+    for (let h = 0; h < hits; h++) {
+      await lunge(A, D);
+      let { d, eff } = damage(att, dfn, special ? (s.k === 'double' ? 1.15 : s.p) : 1);
+      if (meS ? BT.defEn : BT.defMe) d = Math.ceil(d / 2);
+      dfn.hp = Math.max(0, dfn.hp - d); btHud(); D.g.userData.flash = 0.4;
+      if (eff > 1) say('Sehr effektiv! (' + d + ' Schaden)'); else if (eff < 1) say('Nicht sehr effektiv … (' + d + ' Schaden)'); else say(SP[dfn.sp].name + ' verliert ' + d + ' KP.');
+      await wait(650); if (dfn.hp <= 0) return;
+    }
+    if (special && s.k === 'burn') { if (meS) BT.burnEn = 2; else BT.burnMe = 2; say(SP[dfn.sp].name + ' wurde angesengt!'); await wait(600); }
+  }
+  async function turn(choice) {
+    if (BT.busy) return; BT.busy = true; btButtons(false); SFX.click();
+    const me = ADV.team[ADV.active], en = BT.enemy;
+    if (choice === 'run') { say('Ihr zieht euch zurück.'); await wait(700); return endBattle('run'); }
+    if (choice === 'pod') return throwPod();
+    const enChoice = BT.cdEn === 0 && Math.random() < 0.45 ? 'spec' : (en.hp < stats(en).hp * 0.3 && Math.random() < 0.25 ? 'def' : 'atk');
+    const order = choice.startsWith('swap') ? ['me', 'en'] : (stats(me).spd >= stats(en).spd ? ['me', 'en'] : ['en', 'me']);
+    for (const side of order) {
+      if (side === 'me') {
+        if (choice.startsWith('swap')) { ADV.active = +choice.slice(4); setMyBattler(); say('Komm zurück! Los, ' + SP[ADV.team[ADV.active].sp].name + '!'); btHud(); await wait(700); }
+        else await act('me', choice);
+        if (en.hp <= 0) return win();
+      } else {
+        await act('en', enChoice);
+        if (ADV.team[ADV.active].hp <= 0) return myFaint();
+      }
+    }
+    for (const [who, key] of [['me', 'burnMe'], ['en', 'burnEn']]) if (BT[key] > 0) {
+      BT[key]--; const m = who === 'me' ? ADV.team[ADV.active] : en, d = Math.max(1, Math.round(stats(m).hp * 0.07)); m.hp = Math.max(0, m.hp - d);
+      say(SP[m.sp].name + ' leidet unter Glut (' + d + ').'); btHud(); await wait(600);
+      if (en.hp <= 0) return win(); if (ADV.team[ADV.active].hp <= 0) return myFaint();
+    }
+    if (BT.cdMe > 0) BT.cdMe--; if (BT.cdEn > 0) BT.cdEn--;
+    say('Was soll ' + SP[ADV.team[ADV.active].sp].name + ' tun?'); BT.busy = false; btButtons(true);
+  }
+  async function myFaint() {
+    const m = ADV.team[ADV.active]; say(SP[m.sp].name + ' ist erschöpft!'); BT.me.g.rotation.z = 1.3; await wait(900);
+    const next = ADV.team.findIndex(t => t.hp > 0);
+    if (next >= 0) { ADV.active = next; setMyBattler(); say('Los, ' + SP[ADV.team[next].sp].name + '!'); btHud(); await wait(700); BT.busy = false; btButtons(true); return; }
+    say('Alle deiner Tiere sind erschöpft …'); await wait(1100); endBattle('lose');
+  }
+  async function win() {
+    BT.en.g.rotation.z = 1.3; const e = BT.enemy;
+    say(BT.trainer ? 'Du hast ' + BT.trainer + ' besiegt!' : SP[e.sp].name + ' gibt auf und hat jetzt Respekt vor euch!'); await wait(1100);
+    const m = ADV.team[ADV.active], gain = e.lvl * 15 + 10; m.xp += gain; say(SP[m.sp].name + ' bekommt ' + gain + ' Erfahrung.'); await wait(900);
+    while (m.xp >= xpNeed(m.lvl)) { m.xp -= xpNeed(m.lvl); const before = stats(m).hp; m.lvl++; m.hp += stats(m).hp - before;
+      say(SP[m.sp].name + ' erreicht Stufe ' + m.lvl + '!'); SFX.bird(); await wait(1000);
+      if (m.sp === 'brisko' && m.lvl === 5) { say('Brisko ist gewachsen! Er ist jetzt größer als Siles!'); await wait(1400); }
+      if (m.sp === 'brisko' && m.lvl === 8) { say('Brisko ist ein stolzer Adler geworden – er kann jetzt fliegen!'); await wait(1600); } }
+    endBattle('win');
+  }
+  async function throwPod() {
+    const e = BT.enemy, w = BT.wildRef; ADV.pods--; say('Siles wirft einen Silpod!');
+    const pod = new THREE.Mesh(new THREE.SphereGeometry(0.28, 16, 12), new THREE.MeshToonMaterial({ color: 0x8a4fe0, gradientMap: grad }));
+    const band = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.05, 6, 20), mat(0x9adf5a)); pod.add(band); scene.add(pod);
+    const from = new THREE.Vector3(P.x, groundH(P.x, P.z) + 1.6, P.z), to = BT.en.g.position.clone().setY(BT.en.g.position.y + 0.6);
+    for (let i = 0; i <= 20; i++) { const t = i / 20; pod.position.lerpVectors(from, to, t); pod.position.y += Math.sin(t * Math.PI) * 2; pod.rotation.x += 0.4; await wait(25); }
+    const s0 = BT.en.g.scale.x; for (let i = 0; i <= 10; i++) { BT.en.g.scale.setScalar(s0 * (1 - i / 10)); await wait(30); }
+    pod.position.y = groundH(to.x, to.z) + 0.28;
+    const chance = 0.3 + 0.65 * (1 - e.hp / stats(e).hp);
+    const ok = Math.random() < chance;
+    for (let k = 0; k < 3; k++) { for (let i = 0; i < 8; i++) { pod.rotation.z = Math.sin(i / 8 * Math.PI * 2) * 0.5; await wait(40); } await wait(250); if (!ok && k === 1) break; }
+    if (ok) {
+      scene.remove(pod); say(SP[e.sp].name + ' wurde gezähmt und wohnt jetzt in einem Silpod!'); SFX.bird(); await wait(1400);
+      if (w) { w.g.visible = false; w.gone = 60; w.spot.r = 0; }
+      e.xp = 0; BT.tamed = e; endBattle('tame');
+    } else {
+      scene.remove(pod); BT.en.g.scale.setScalar(s0); say(SP[e.sp].name + ' ist wieder ausgebrochen!'); await wait(900);
+      await act('en', BT.cdEn === 0 ? 'spec' : 'atk'); if (ADV.team[ADV.active].hp <= 0) return myFaint();
+      if (BT.cdMe > 0) BT.cdMe--; if (BT.cdEn > 0) BT.cdEn--; say('Was soll ' + SP[ADV.team[ADV.active].sp].name + ' tun?'); BT.busy = false; btButtons(true);
+    }
+  }
+  function endBattle(res) {
+    scene.remove(BT.me.g); scene.remove(BT.en.g); el('bt').classList.remove('on'); BT.on = false; bushIMs.forEach(b => b.visible = true); camera.near = 0.3; camera.updateProjectionMatrix();
+    if (companion) companion.visible = true;
+    const w = BT.wildRef;
+    if (w && res !== 'tame') { w.g.visible = false; w.gone = res === 'win' ? 25 : 4; w.spot.r = 0; }
+    if (res === 'win') {
+      if (!BT.trainer) { ADV.wins++; if (Q.step === 4 && ADV.wins >= 2) setStep(5); }
+      else { ADV.rinaBeaten = true; ADV.pods += 3; setTimeout(() => openDialog('Waldhüterin Rina', ['Rina: Wow, was für ein Kampf! Ihr habt euch meinen Respekt verdient.', 'Rina: Hier – drei Silpods! Mit einem Silpod kannst du ein geschwächtes wildes Tier zähmen.', 'Rina: Du kannst bis zu 10 Tiere haben. Aber nur eines läuft mit dir, die anderen ruhen in ihren Silpods.', 'Rina: Ab jetzt sind wir Freunde, Siles!'], () => { if (Q.step <= 5) setStep(6); }), 300); }
+    }
+    if (res === 'tame') {
+      const e = BT.tamed; BT.tamed = null;
+      if (ADV.team.length < 10) { ADV.team.push(e); if (Q.step === 6) setStep(7); setTimeout(() => openDialog('Silpod', [SP[e.sp].name + ' ist jetzt in deinem Team! (' + ADV.team.length + '/10)', 'Tippe oben auf 🐾 Team, um zu wählen, wer mit dir läuft.']), 300); }
+      else openTeam(e);
+    }
+    if (res === 'lose') { healAll(); const hx = healer.g.position.x, hz = healer.g.position.z; P.x = hx + 1.5; P.z = hz + 2.5;
+      setTimeout(() => openDialog('Heilerin', ['Heilerin: Oje, ihr seid ja ganz erschöpft! Ich habe euch zur Krankenstation gebracht.', 'Heilerin: Deine Tiere sind wieder gesund. Ruht euch kurz aus und versucht es nochmal!']), 300); }
+    const b = briskoMon(); if (Q.step === 7 && b && b.lvl >= 8) setTimeout(() => { setStep(8); }, 400);
+    $('gGoalT').textContent = goalText(); refreshCompanion(); advHud(); writeSave();
+  }
+  function battleFrame(dt) {
+    BT.t += dt;
+    for (const b of [BT.me, BT.en]) if (b.g) {
+      animCreature(b.g, time + (b === BT.en ? 0.7 : 0), false, b === BT.me && b.g.userData.sp === 'brisko' && briskoStageOf(ADV.team[ADV.active]) === 2);
+      const f = b.g.userData.flash || 0; if (f > 0) { b.g.userData.flash = f - dt; b.g.visible = Math.floor(f * 20) % 2 === 0; } else b.g.visible = true;
+    }
+    // Kamera seitlich auf die Kampfbühne
+    const c = BT.center, yaw = BT.camYaw, gy = groundH(c.x, c.z);
+    const tx = c.x + Math.sin(yaw) * 10, tz = c.z + Math.cos(yaw) * 10, k = BT.snap ? 1 : 1 - Math.exp(-dt * 4); BT.snap = false;
+    camera.position.x += (tx - camera.position.x) * k; camera.position.y += (gy + 2.8 - camera.position.y) * k; camera.position.z += (tz - camera.position.z) * k;
+    camera.lookAt(c.x, gy + 1.0, c.z);
+    player.position.set(P.x, groundH(P.x, P.z), P.z);
+    if (hero) { hero.root.rotation.y = Math.atan2(BT.en.pos.x - P.x, BT.en.pos.z - P.z); hero.idle.setEffectiveWeight(1); hero.walk.setEffectiveWeight(0); hero.run.setEffectiveWeight(0); hero.mixer.update(dt); for (const l of hero.legBones) l.bn.quaternion.slerp(l.rest, 1); }
+    sky.position.copy(camera.position); if (backdrop) { backdrop.position.x = camera.position.x; backdrop.position.z = camera.position.z; }
+    grassMat.uniforms.uTime.value = time; updateLife(dt); SFX.update(dt);
+    for (const f of advAnim) f(dt);
+  }
+
+  // ---------- Team-Menü (max. 10, Begleiter wählen, freilassen) ----------
+  function openTeam(incoming) {
+    const box = el('tmList'); box.innerHTML = '';
+    el('tmTitle').textContent = incoming ? 'Team voll! Wen lässt du frei, damit ' + SP[incoming.sp].name + ' Platz hat?' : 'Dein Team (' + ADV.team.length + '/10) · Silpods: ' + ADV.pods;
+    ADV.team.forEach((m, i) => {
+      const s = stats(m), d = document.createElement('div'); d.className = 'tm' + (i === ADV.active ? ' act' : '');
+      d.innerHTML = '<b>' + SP[m.sp].name + '</b><i>Stufe ' + m.lvl + ' · ' + SP[m.sp].type + '</i><div class="hp"><span style="width:' + (m.hp / s.hp * 100) + '%"></span></div><small>' + Math.ceil(m.hp) + '/' + s.hp + ' KP · ✨ ' + SP[m.sp].sp.n + '</small>';
+      const b = document.createElement('button'); b.type = 'button';
+      if (incoming) { b.textContent = m.sp === 'brisko' ? 'Bleibt' : 'Freilassen'; b.disabled = m.sp === 'brisko'; b.onclick = () => { ADV.team.splice(i, 1, incoming); if (ADV.active === i) ADV.active = 0; closeTeam(); refreshCompanion(); writeSave(); }; }
+      else { b.textContent = i === ADV.active ? 'Läuft mit' : 'Mitnehmen'; b.disabled = i === ADV.active; b.onclick = () => { ADV.active = i; refreshCompanion(); openTeam(); writeSave(); SFX.click(); }; }
+      d.appendChild(b); box.appendChild(d);
+    });
+    if (incoming) { const k = document.createElement('button'); k.type = 'button'; k.className = 'tmKeep'; k.textContent = SP[incoming.sp].name + ' nicht aufnehmen'; k.onclick = closeTeam; box.appendChild(k); }
+    el('tm').classList.add('on'); dialogOpen = true;
+  }
+  function closeTeam() { el('tm').classList.remove('on'); dialogOpen = false; }
+
+  // ---------- Fliegen ----------
+  const FLY = { on: false, h: 0 };
+  function toggleFly() {
+    const b = briskoMon(); if (!b || b.lvl < 8) return;
+    if (!FLY.on) {
+      ADV.active = ADV.team.indexOf(b); refreshCompanion(); FLY.on = true; FLY.h = groundH(P.x, P.z); FLY.alt = 8; el('gFly').classList.add('on');
+      if (!ADV.flewOnce) { ADV.flewOnce = true; if (Q.step === 8) setTimeout(() => setStep(9), 4000); }
+    } else {
+      if (!canWalk(P.x, P.z)) { say2('Hier kann Brisko nicht landen – flieg über das Dorf oder den Wald.'); return; }
+      FLY.on = false; el('gFly').classList.remove('on');
+    }
+    SFX.bird(); advHud();
+  }
+  function say2(t) { const n = $('gName'); n.textContent = t; n.classList.remove('show'); void n.offsetWidth; n.classList.add('show'); setTimeout(() => { n.textContent = 'Wiesengrund'; }, 3200); }
+  function flyFrame(dt, ix, iy, len) {
+    const cs = Math.cos(cam.yaw), sn = Math.sin(cam.yaw), wx = cs * ix + sn * iy, wz = -sn * ix + cs * iy, sp = 16 * len;
+    if (len > 0) { P.x += wx / len * sp * dt; P.z += wz / len * sp * dt; P.dir = Math.atan2(wx, wz); }
+    const r = Math.hypot(P.x, P.z); if (r > 260) { P.x *= 260 / r; P.z *= 260 / r; }
+    if (input.run || keys['shift']) FLY.alt = Math.min(70, FLY.alt + dt * 10); else if (keys['c']) FLY.alt = Math.max(4, FLY.alt - dt * 10);
+    const gy = groundH(P.x, P.z), ty = gy + FLY.alt; FLY.h += (ty - FLY.h) * Math.min(1, dt * 2);
+    companion.position.set(P.x, FLY.h - 1.2, P.z);
+    let da = P.dir - companion.rotation.y; da = Math.atan2(Math.sin(da), Math.cos(da)); companion.rotation.y += da * Math.min(1, dt * 4); companion.rotation.z = -da * 0.5;
+    animCreature(companion, time, false, true);
+    player.position.set(P.x, FLY.h + 0.25, P.z);
+    if (hero) { hero.root.rotation.y = companion.rotation.y; hero.idle.setEffectiveWeight(1); hero.walk.setEffectiveWeight(0); hero.run.setEffectiveWeight(0); hero.mixer.update(dt); for (const l of hero.legBones) l.bn.quaternion.slerp(l.rest, 1); }
+    const d = 15, pc = Math.max(cam.pitch, 0.15);
+    const tx = P.x + Math.sin(cam.yaw) * Math.cos(pc) * d, tz = P.z + Math.cos(cam.yaw) * Math.cos(pc) * d, k = 1 - Math.exp(-dt * 5);
+    camera.position.x += (tx - camera.position.x) * k; camera.position.y += (FLY.h + 2 + Math.sin(pc) * d - camera.position.y) * k; camera.position.z += (tz - camera.position.z) * k;
+    camera.lookAt(P.x, FLY.h + 1.5, P.z);
+    sky.position.copy(camera.position); if (backdrop) { backdrop.position.x = camera.position.x; backdrop.position.z = camera.position.z; }
+    grassMat.uniforms.uTime.value = time; updateLife(dt); SFX.update(dt);
+    for (const f of advAnim) f(dt); updateWild(dt); updateVillagers(dt); for (const n of npcs) n.update(dt);
+  }
+
+  // ---------- Anzeige ----------
+  function advHud() {
+    el('gTeam').classList.toggle('on', ADV.team.length > 0);
+    const b = briskoMon(); el('gFly').style.display = b && b.lvl >= 8 ? '' : 'none';
+    el('gB').querySelector('small').textContent = FLY.on ? 'Steigen' : 'Rennen';
+    if (Q.step >= 0 && $('gGoalT')) $('gGoalT').textContent = goalText();
+  }
+  let regenT = 0;
+  function advUpdate(dt, y) {
+    for (const f of advAnim) f(dt);
+    updateWild(dt); updateCompanion(dt, y);
+    if (babyBrisko && babyBrisko.visible) { animCreature(babyBrisko, time, false, Math.sin(time * 1.3) > 0.7); if (Q.step === 2 && Math.hypot(P.x - CLEAR.x, P.z - CLEAR.z) < 22 && Math.random() < dt * 0.6) SFX.bird(); }
+    if (rinaG) { animCreature(rinaG, time, false, false); }
+    if (Q.step === 1 && P.z < -63) setStep(2);
+    regenT += dt; if (regenT > 3) { regenT = 0; for (const m of ADV.team) { const mx = stats(m).hp; if (m.hp > 0 && m.hp < mx) m.hp = Math.min(mx, m.hp + 1); } }
+  }
+  function bindAdv() {
+    for (const [id, c] of [['btAtk', 'atk'], ['btSpec', 'spec'], ['btDef', 'def'], ['btPod', 'pod'], ['btRun', 'run']]) el(id).addEventListener('click', () => turn(c));
+    el('btSwap').addEventListener('click', () => {
+      const L = el('btSwapList'); L.innerHTML = '';
+      ADV.team.forEach((m, i) => { if (i === ADV.active || m.hp <= 0) return; const b = document.createElement('button'); b.type = 'button'; b.textContent = SP[m.sp].name + ' (St. ' + m.lvl + ')'; b.onclick = () => turn('swap' + i); L.appendChild(b); });
+      L.classList.toggle('on');
+    });
+    el('gTeam').addEventListener('click', () => { SFX.click(); openTeam(); });
+    el('tmClose').addEventListener('click', () => { SFX.click(); closeTeam(); });
+    el('gFly').addEventListener('click', () => { SFX.click(); toggleFly(); });
+  }
+  function advSave() { return { team: ADV.team, pods: ADV.pods, active: ADV.active, wins: ADV.wins, flewOnce: ADV.flewOnce, rinaBeaten: ADV.rinaBeaten }; }
+  function advLoad(a) {
+    Object.assign(ADV, { team: [], pods: 0, active: 0, wins: 0, flewOnce: false, rinaBeaten: false }, a || {});
+    if (babyBrisko) babyBrisko.visible = Q.step <= 2;
+    FLY.on = false; el('gFly').classList.remove('on'); companionSp = '-'; refreshCompanion(); advHud();
+  }
+
   window.addEventListener('pagehide', () => { if (running) writeSave(); });
-  return { _tris: () => { let t = 0; scene.traverse(o => { if (o.isMesh && o.visible) { const g = o.geometry, n = (g.index ? g.index.count : g.attributes.position.count) / 3; t += n * (o.isInstancedMesh ? o.count : 1); } }); return Math.round(t / 1000) + "k"; }, _top: () => { const L = []; scene.traverse(o => { if (o.isMesh && o.visible) { const g = o.geometry, n = (g.index ? g.index.count : g.attributes.position.count) / 3; L.push([Math.round(n * (o.isInstancedMesh ? o.count : 1) / 1000), o.isInstancedMesh ? o.count : 1, Math.round(n)]); } }); return L.sort((a, b) => b[0] - a[0]).slice(0, 12); }, _vill: () => villagers.map(v => [+v.g.position.x.toFixed(1), +v.g.position.z.toFixed(1), v.npc && v.npc.ready]), _nav: () => navN, _col: () => colliders.filter(c => c.box), _segs: () => pathSegs, _fly: (i) => { const p = flies[i].g.position; return [p.x, p.z]; }, setQuality, start, stop, hasSave: () => !!readSave(), _healer: () => [healer.g.position.x, healer.g.position.z], click: () => SFX.click(), _tp: (x, z, d) => { P.x = x; P.z = z; if (d !== undefined) P.dir = d; if (d !== undefined && d > 50) cam.yaw = d - 100; if (camera) camera.position.set(x + Math.sin(cam.yaw) * cam.d, groundH(x, z) + 1.6 + Math.sin(cam.pitch) * cam.d, z + Math.cos(cam.yaw) * cam.d); }, _cam: (yaw, h, pitch) => { cam.yaw = yaw; if (h) cam.pitch = Math.atan2(h - 1.6, cam.d); if (pitch !== undefined) cam.pitch = pitch; }, _q: () => Q, _skip: () => { if (dialogOpen) { talkIdx = talkLines.length - 1; nextLine(); } }, _hero: () => hero, _sim: (n, d) => { for (let i = 0; i < n; i++) { time += d; update(d); } }, _state: () => ({ x: P.x, z: P.z, near: nearSpot && nearSpot.title, rot, GW, GH, colliders: colliders.length }) };
+  return { _bt: () => BT.on ? { me: BT.me.g.position.toArray().map(v => +v.toFixed(1)), meVis: BT.me.g.visible, inScene: !!BT.me.g.parent, en: BT.en.g.position.toArray().map(v => +v.toFixed(1)), P: [P.x, P.z], cam: camera.position.toArray().map(v => +v.toFixed(1)), sc: BT.me.g.scale.x } : null, _adv: () => ({ ADV, step: Q.step, BT: BT.on, FLY: FLY.on, wild: wild.map(w => [w.sp, +w.g.position.x.toFixed(1), +w.g.position.z.toFixed(1), w.g.visible]) }), _setAdv: (o) => { Object.assign(ADV, o); refreshCompanion(); advHud(); }, _step: (n) => setStep(n), _turn: (c) => turn(c), _fight: (i) => wildAction(wild[i]), _flyT: () => toggleFly(), _tris: () => { let t = 0; scene.traverse(o => { if (o.isMesh && o.visible) { const g = o.geometry, n = (g.index ? g.index.count : g.attributes.position.count) / 3; t += n * (o.isInstancedMesh ? o.count : 1); } }); return Math.round(t / 1000) + "k"; }, _top: () => { const L = []; scene.traverse(o => { if (o.isMesh && o.visible) { const g = o.geometry, n = (g.index ? g.index.count : g.attributes.position.count) / 3; L.push([Math.round(n * (o.isInstancedMesh ? o.count : 1) / 1000), o.isInstancedMesh ? o.count : 1, Math.round(n)]); } }); return L.sort((a, b) => b[0] - a[0]).slice(0, 12); }, _vill: () => villagers.map(v => [+v.g.position.x.toFixed(1), +v.g.position.z.toFixed(1), v.npc && v.npc.ready]), _nav: () => navN, _col: () => colliders.filter(c => c.box), _segs: () => pathSegs, _fly: (i) => { const p = flies[i].g.position; return [p.x, p.z]; }, setQuality, start, stop, hasSave: () => !!readSave(), _healer: () => [healer.g.position.x, healer.g.position.z], click: () => SFX.click(), _tp: (x, z, d) => { P.x = x; P.z = z; if (d !== undefined) P.dir = d; if (d !== undefined && d > 50) cam.yaw = d - 100; if (camera) camera.position.set(x + Math.sin(cam.yaw) * cam.d, groundH(x, z) + 1.6 + Math.sin(cam.pitch) * cam.d, z + Math.cos(cam.yaw) * cam.d); }, _cam: (yaw, h, pitch) => { cam.yaw = yaw; if (h) cam.pitch = Math.atan2(h - 1.6, cam.d); if (pitch !== undefined) cam.pitch = pitch; }, _q: () => Q, _skip: () => { if (dialogOpen) { talkIdx = talkLines.length - 1; nextLine(); } }, _hero: () => hero, _sim: (n, d) => { for (let i = 0; i < n; i++) { time += d; update(d); } }, _state: () => ({ x: P.x, z: P.z, near: nearSpot && nearSpot.title, rot, GW, GH, colliders: colliders.length }) };
 })();
 
