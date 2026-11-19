@@ -4745,11 +4745,11 @@ const Game = (() => {
     for (const [x, z] of [[-44, -6], [44, -8], [-44, 22], [44, 20], [-6, -45], [8, -48], [-40, -44], [40, -44], [-34, 40], [34, 40], [-7, 15], [7, 17], [-21, -48], [22, -48]]) tryTree(x, z, true);
     // Extrem dichter Wald direkt hinter dem Zaun: vorne echte Baummodelle, dahinter günstige Bäume (sehen von weitem gleich aus)
     const farTrees = [];
-    for (let gx = -VR - 62; gx <= VR + 62; gx += 2.9) for (let gz = -VR - 62; gz <= VR + 62; gz += 2.9) {
-      const x = gx + (rnd() - 0.5) * 2.2, z = gz + (rnd() - 0.5) * 2.2, r = Math.hypot(x, z);
-      if (r < VR + 2.5 || r > VR + 60) continue;
+    for (let gx = -VR - 62; gx <= VR + 62; gx += 4.2) for (let gz = -VR - 62; gz <= VR + 62; gz += 4.2) {
+      const x = gx + (rnd() - 0.5) * 3.2, z = gz + (rnd() - 0.5) * 3.2, r = Math.hypot(x, z);
+      if (r < VR + 2.5 || r > VR + 42) continue;
       if (Math.abs(x) < 3.2 && z < 0) continue;                         // Waldweg nach Norden bleibt frei
-      if (r < VR + 9 && rnd() < 0.45) tryTree(x, z, false); else farTrees.push([x, z, 0.85 + rnd() * 0.6, rnd()]);
+      if (r < VR + 9 && rnd() < 0.3) tryTree(x, z, false); else farTrees.push([x, z, 0.85 + rnd() * 0.6, rnd()]);
     }
     const dm = new THREE.Object3D(), col = new THREE.Color();
     function inst(geo, m, list, fn) {
@@ -4832,7 +4832,7 @@ const Game = (() => {
     const bushGeos = [bushGeo(11, 150), bushGeo(29, 150), bushGeo(47, 150)];
     // Büsche im Süden und Steine
     const bushes = [], rocks = [];
-    for (let i = 0; i < 140; i++) { const a = rnd() * 6.283;  if (Math.abs(Math.cos(a)) < 0.1 && Math.sin(a) < 0) continue; const _a = a, r = VR + 1.5 + rnd() * 18; bushes.push([Math.cos(a) * r, Math.sin(a) * r, 0.6 + rnd() * 0.6]); }
+    for (let i = 0; i < 90; i++) { const a = rnd() * 6.283;  if (Math.abs(Math.cos(a)) < 0.1 && Math.sin(a) < 0) continue; const _a = a, r = VR + 1.5 + rnd() * 18; bushes.push([Math.cos(a) * r, Math.sin(a) * r, 0.6 + rnd() * 0.6]); }
     f = (t, o) => { o.position.set(t[0], groundH(t[0], t[1]) + 0.45 * t[2], t[1]); o.scale.set(1.3 * t[2], 0.9 * t[2], 1.3 * t[2]); o.rotation.set(0, t[0], 0); };
     f = (t, o) => { o.position.set(t[0], groundH(t[0], t[1]) + 0.35 * t[2], t[1]); o.scale.set(1.25 * t[2], 1.0 * t[2], 1.25 * t[2]); o.rotation.set(0, t[0] * 2.3, 0); };
     bushGeos.forEach((bg, k) => inst(bg, bushMat, bushes.filter((t, i) => i % 3 === k), f));
